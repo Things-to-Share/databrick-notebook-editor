@@ -625,6 +625,7 @@
     theme: (localStorage.getItem(THEME_STORAGE_KEY) || CONFIG.defaultTheme || 'dark'),
     expandedFolderPaths: new Set(), // folder paths currently expanded in the nav tree, kept across tree rebuilds
     sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1',
+    selectedNode: null, // { path, isDir, handle, parentHandle } - currently selected nav tree item (for F2 rename)
   };
 
   const debouncers = new Map(); // path -> { draft, disk }
@@ -912,6 +913,9 @@
     }
 
     node.addEventListener('click', async () => {
+      document.querySelectorAll('.tree .node.selected').forEach((n) => n.classList.remove('selected'));
+      node.classList.add('selected');
+      state.selectedNode = (path && !opts.bound) ? { path, isDir: true, handle: dirHandle } : null;
       const isExpanded = childUl.classList.contains('open');
       if (!isExpanded) {
         await loadChildren();
@@ -964,7 +968,10 @@
     node.innerHTML = `<span class="twisty"></span><span class="icon">${isNb ? '\uD83D\uDCD3' : iconForExt(ext)}</span><span class="label"></span>`;
     node.querySelector('.label').textContent = fileHandle.name;
 
-    node.addEventListener('click', () => highlightSelectedNode(path));
+    node.addEventListener('click', () => {
+      highlightSelectedNode(path);
+      state.selectedNode = { path, isDir: false, handle: fileHandle, parentHandle };
+    });
     node.addEventListener('dblclick', () => openFile(fileHandle, path, parentHandle));
     node.addEventListener('contextmenu', (ev) => {
       ev.preventDefault();
@@ -1102,8 +1109,6 @@
         <select id="nb-lang">
           <option value="py">Python (.py)</option>
           <option value="sql">SQL (.sql)</option>
-          <option value="scala">Scala (.scala)</option>
-          <option value="r">R (.r)</option>
           <option value="ipynb">Jupyter (.ipynb)</option>
         </select>
       </div>
@@ -1263,6 +1268,142 @@
   }
 
   // ---------------------------------------------------------------------
+  // Rename-safety helpers: existing-name validation + best-effort rewriting
+  // of %run references elsewhere in the workspace when a notebook file or
+  // a folder containing notebook files is renamed/moved.
+  // ---------------------------------------------------------------------
+
+  async function entryExists(dirHandle, name) {
+    try { await dirHandle.getFileHandle(name); return true; } catch { /* not a file */ }
+    try { await dirHandle.getDirectoryHandle(name); return true; } catch { /* not a directory either */ }
+    return false;
+  }
+
+  async function listAllFiles(dirHandle, prefix) {
+    const out = [];
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (IGNORED_NAMES.has(name)) continue;
+      const childPrefix = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === 'directory') {
+        out.push(...(await listAllFiles(handle, childPrefix)));
+      } else {
+        out.push(childPrefix);
+      }
+    }
+    return out;
+  }
+
+  function stripRunQuotes(s) {
+    s = s.trim();
+    if (s.length >= 2 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+      return s.slice(1, -1);
+    }
+    return s;
+  }
+
+  function resolveRunPathSegments(baseDirSegments, target) {
+    target = stripRunQuotes(target);
+    const raw = target.startsWith('/') ? target.slice(1).split('/') : baseDirSegments.concat(target.split('/'));
+    const out = [];
+    for (const seg of raw) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') out.pop();
+      else out.push(seg);
+    }
+    return out;
+  }
+
+  function runSegmentsMatchPath(segments, filePathNoRoot) {
+    const joined = segments.join('/');
+    const noExt = filePathNoRoot.replace(/\.[^/.]+$/, '');
+    return joined === filePathNoRoot || joined === noExt;
+  }
+
+  function relativeRunPath(fromDirSegments, toSegments, keepExt) {
+    let i = 0;
+    while (i < fromDirSegments.length && i < toSegments.length && fromDirSegments[i] === toSegments[i]) i++;
+    const ups = fromDirSegments.length - i;
+    const downs = toSegments.slice(i);
+    const target = keepExt ? downs : (() => {
+      const copy = downs.slice();
+      if (copy.length) copy[copy.length - 1] = copy[copy.length - 1].replace(/\.[^/.]+$/, '');
+      return copy;
+    })();
+    const parts = [];
+    for (let k = 0; k < ups; k++) parts.push('..');
+    parts.push(...target);
+    return ups === 0 ? './' + parts.join('/') : parts.join('/');
+  }
+
+  async function updateRunReferencesInFile(fileHandle, filePath, renamedPairs) {
+    const openRecord = state.openFiles.get(filePath);
+    let text;
+    if (openRecord) {
+      if (openRecord.kind !== 'notebook') return;
+      text = serializeDatabricksNotebook(openRecord.cells, openRecord.token, openRecord.defaultLang);
+    } else {
+      text = await (await fileHandle.getFile()).text();
+    }
+    const token = COMMENT_TOKEN[extOf(filePath)];
+    if (!token || !isDatabricksSource(text, token)) return;
+
+    const fromDirSegments = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')).split('/') : [];
+    const magicRe = new RegExp(`^${escapeRegex(token)} MAGIC %run[ \\t]+(.*)$`);
+    let changed = false;
+    const lines = text.split(/\r?\n/).map((line) => {
+      const m = line.match(magicRe);
+      if (!m) return line;
+      const targetRaw = m[1];
+      const hadExt = /\.[A-Za-z0-9]+$/.test(stripRunQuotes(targetRaw));
+      const resolved = resolveRunPathSegments(fromDirSegments, targetRaw);
+      for (const { oldPath, newPath } of renamedPairs) {
+        if (runSegmentsMatchPath(resolved, oldPath)) {
+          const newTarget = relativeRunPath(fromDirSegments, newPath.split('/'), hadExt);
+          changed = true;
+          return `${token} MAGIC %run ${newTarget}`;
+        }
+      }
+      return line;
+    });
+    if (!changed) return;
+    const newText = lines.join('\n');
+    if (openRecord) {
+      openRecord.cells = parseDatabricksNotebook(newText, token);
+      markDirty(openRecord);
+    } else {
+      const writable = await fileHandle.createWritable();
+      await writable.write(newText);
+      await writable.close();
+    }
+  }
+
+  async function walkFilesForRunUpdate(dirHandle, pathPrefix, renamedPairs) {
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (IGNORED_NAMES.has(name)) continue;
+      const childPath = pathPrefix ? `${pathPrefix}/${name}` : name;
+      if (handle.kind === 'directory') {
+        await walkFilesForRunUpdate(handle, childPath, renamedPairs);
+      } else if (NOTEBOOK_EXTS.includes(extOf(name))) {
+        await updateRunReferencesInFile(handle, childPath, renamedPairs);
+      }
+    }
+  }
+
+  // Best-effort: after a file/folder rename, rewrite %run targets elsewhere
+  // in the workspace that pointed at the old path(s) so they keep working.
+  // Only .py/.sql notebook sources are scanned/rewritten.
+  async function updateWorkspaceRunReferences(renamedPairs) {
+    const pairs = renamedPairs.filter((p) => NOTEBOOK_EXTS.includes(extOf(p.newPath)));
+    if (!pairs.length) return;
+    try {
+      if (state.rootHandle) await walkFilesForRunUpdate(state.rootHandle, '', pairs);
+      for (const { handle } of state.extraRoots) await walkFilesForRunUpdate(handle, '', pairs);
+    } catch (err) {
+      console.warn('Failed to update %run references after rename', err);
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // New file / rename file / rename folder
   // ---------------------------------------------------------------------
 
@@ -1328,12 +1469,14 @@
         <label>New name (extension "${escapeHtml(ext)}" is kept)</label>
         <input id="rn-name" type="text" value="${escapeHtml(baseName)}" />
       </div>
+      <div class="field" id="rn-error" style="display:none;color:#ff8a80;"></div>
       <div class="actions">
         <button id="rn-cancel">Cancel</button>
         <button id="rn-ok" class="primary">Rename</button>
       </div>
     `);
     const input = modal.querySelector('#rn-name');
+    const errorEl = modal.querySelector('#rn-error');
     input.focus();
     input.select();
     modal.querySelector('#rn-cancel').addEventListener('click', closeModal);
@@ -1341,8 +1484,13 @@
       const newBase = input.value.trim();
       if (!newBase) return;
       const newName = newBase + ext;
+      if (newName === oldName) { closeModal(); return; }
+      if (await entryExists(parentHandle, newName)) {
+        errorEl.textContent = `"${newName}" already exists in this folder.`;
+        errorEl.style.display = 'block';
+        return;
+      }
       closeModal();
-      if (newName === oldName) return;
       const record = state.openFiles.get(path);
       if (record) {
         await renameOpenFile(record, newName);
@@ -1356,6 +1504,11 @@
           await parentHandle.removeEntry(oldName);
           await buildTree();
           setStatus(`Renamed to ${newName}`);
+          if (NOTEBOOK_EXTS.includes(extOf(newName))) {
+            const dirPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+            const newPath = dirPath ? `${dirPath}/${newName}` : newName;
+            await updateWorkspaceRunReferences([{ oldPath: stripRootPrefix(path), newPath: stripRootPrefix(newPath) }]);
+          }
         } catch (err) {
           setStatus('Failed to rename file: ' + err.message, true);
         }
@@ -1371,26 +1524,34 @@
         <label>New name</label>
         <input id="rn-name" type="text" value="${escapeHtml(oldName)}" />
       </div>
+      <div class="field" id="rn-error" style="display:none;color:#ff8a80;"></div>
       <div class="actions">
         <button id="rn-cancel">Cancel</button>
         <button id="rn-ok" class="primary">Rename</button>
       </div>
     `);
     const input = modal.querySelector('#rn-name');
+    const errorEl = modal.querySelector('#rn-error');
     input.focus();
     input.select();
     modal.querySelector('#rn-cancel').addEventListener('click', closeModal);
     modal.querySelector('#rn-ok').addEventListener('click', async () => {
       const newName = input.value.trim();
-      closeModal();
-      if (!newName || newName === oldName) return;
+      if (!newName || newName === oldName) { closeModal(); return; }
       try {
         const parentHandle = await resolveParentDirHandle(path);
+        if (await entryExists(parentHandle, newName)) {
+          errorEl.textContent = `"${newName}" already exists in this folder.`;
+          errorEl.style.display = 'block';
+          return;
+        }
+        closeModal();
+        const subPaths = await listAllFiles(dirHandle, '');
+        const parentPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        const newPath = parentPath ? `${parentPath}/${newName}` : newName;
         await copyDirRecursive(dirHandle, parentHandle, newName);
         await parentHandle.removeEntry(oldName, { recursive: true });
         const oldPrefix = path + '/';
-        const parentPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-        const newPath = parentPath ? `${parentPath}/${newName}` : newName;
         for (const openPath of [...state.fileOrder]) {
           if (openPath === path || openPath.startsWith(oldPrefix)) {
             const rec = state.openFiles.get(openPath);
@@ -1410,6 +1571,11 @@
         await buildTree();
         renderAll();
         setStatus(`Renamed folder to "${newName}"`);
+        const renamePairs = subPaths.map((sub) => ({
+          oldPath: stripRootPrefix(sub ? `${path}/${sub}` : path),
+          newPath: stripRootPrefix(sub ? `${newPath}/${sub}` : newPath),
+        }));
+        await updateWorkspaceRunReferences(renamePairs);
       } catch (err) {
         setStatus('Failed to rename folder: ' + err.message, true);
       }
@@ -1423,6 +1589,7 @@
     const dirPath = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : '';
     const newPath = dirPath ? `${dirPath}/${newFileName}` : newFileName;
     if (state.openFiles.has(newPath)) { setStatus('A file with that name is already open', true); return; }
+    if (await entryExists(record.parentHandle, newFileName)) { setStatus(`"${newFileName}" already exists in this folder`, true); return; }
     try {
       let text;
       if (record.kind === 'notebook') text = serializeDatabricksNotebook(record.cells, record.token, record.defaultLang);
@@ -1453,6 +1620,9 @@
       highlightSelectedNode(newPath);
       renderAll();
       setStatus(`Renamed to ${newFileName}`);
+      if (record.kind === 'notebook') {
+        await updateWorkspaceRunReferences([{ oldPath: stripRootPrefix(oldPath), newPath: stripRootPrefix(newPath) }]);
+      }
     } catch (err) {
       setStatus('Failed to rename file: ' + err.message, true);
     }
@@ -2330,6 +2500,17 @@
       const record = state.lastFocusedRecord || (activePath && state.openFiles.get(activePath));
       if (record) flushDiskSave(record);
     }
+  });
+
+  // F2 renames the currently selected navigation-panel item (file or folder).
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'F2') return;
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+    if (!state.selectedNode) return;
+    ev.preventDefault();
+    if (state.selectedNode.isDir) promptRenameFolder(state.selectedNode.handle, state.selectedNode.path);
+    else promptRenameFile(state.selectedNode.parentHandle, state.selectedNode.path);
   });
 
   window.addEventListener('beforeunload', (ev) => {

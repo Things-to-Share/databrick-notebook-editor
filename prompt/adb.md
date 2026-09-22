@@ -55,7 +55,13 @@ I need a html page to add and edit Databricks Notebooks locally.
     - other file extensions should have appropriate icons representing their types.
     - Files that are opened in the editor should have a distinct visual indicator, such as a highlighted icon or different text color.
 - the cell content should be scrollable with a vertical scrollbar when the content exceeds the visible area.
-
+- renaming files and folders should be supported directly within the navigation panel.
+    - The user should be able to initiate renaming by right-clicking on the item and selecting "Rename" or by pressing F2 when the item is selected.
+    - The new name should be validated to ensure it does not conflict with existing items in the same directory.
+    - Renaming should update all references to the item within the workspace if applicable.
+    - renaming should include the extension of the file, ensuring that it remains consistent with the file type.
+    - If the user attempts to rename a file with an unsupported extension, an appropriate error message should be displayed.
+    
 ### Notebook Editing Panel
 
 - The files openend should appear als separated tabs that can be pinned and moved around on the tabs-bar.
