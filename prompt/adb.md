@@ -101,6 +101,7 @@ I need a html page to add and edit Databricks Notebooks locally.
 - markdown cell should display its content using proper markdown formatting, if NOT actively being edited. If the cell is being edited, it should switch to an editable text area. the content should be updated in real-time as the user types.
 - Markdown cell do NOT get a skip marker `%skip`.
 - The syntax highlighting should work both with darkmode and lightmode.
+- ensure when rendering markdown cells the parsing of tables is done correctly and they are displayed with proper formatting.
 
 #### SQL Cell(s)
 

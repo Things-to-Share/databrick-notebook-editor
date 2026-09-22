@@ -532,8 +532,55 @@
       return t;
     }
 
-    for (const raw of lines) {
-      const line = raw;
+    // GFM-style pipe tables, e.g.:
+    //   | Header A | Header B |
+    //   | --- | :---: |
+    //   | cell 1   | cell 2   |
+    function splitTableRow(line) {
+      let trimmed = line.trim();
+      if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+      if (trimmed.endsWith('|') && !trimmed.endsWith('\\|')) trimmed = trimmed.slice(0, -1);
+      return trimmed.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
+    }
+    function isTableRow(line) {
+      return /\|/.test(line);
+    }
+    function isTableSeparatorRow(line) {
+      const trimmed = line.trim();
+      return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(trimmed) && trimmed.includes('-');
+    }
+    function tableAligns(sepLine) {
+      return splitTableRow(sepLine).map((cell) => {
+        const left = cell.startsWith(':');
+        const right = cell.endsWith(':');
+        if (left && right) return 'center';
+        if (right) return 'right';
+        if (left) return 'left';
+        return '';
+      });
+    }
+    function alignAttr(align) {
+      return align ? ` style="text-align:${align}"` : '';
+    }
+    function buildTableHtml(headerCells, aligns, bodyRows) {
+      let out = '<table class="md-table"><thead><tr>';
+      headerCells.forEach((cell, i) => {
+        out += `<th${alignAttr(aligns[i])}>${inline(cell)}</th>`;
+      });
+      out += '</tr></thead><tbody>';
+      for (const row of bodyRows) {
+        out += '<tr>';
+        headerCells.forEach((_, i) => {
+          out += `<td${alignAttr(aligns[i])}>${inline(row[i] || '')}</td>`;
+        });
+        out += '</tr>';
+      }
+      out += '</tbody></table>';
+      return out;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (/^```/.test(line.trim())) {
         if (inCode) {
           html += `<pre class="md-code-block"><code>${escapeHtml(codeBuf.join('\n'))}</code></pre>`;
@@ -546,6 +593,21 @@
         continue;
       }
       if (inCode) { codeBuf.push(line); continue; }
+
+      if (isTableRow(line) && lines[i + 1] !== undefined && isTableSeparatorRow(lines[i + 1])) {
+        flushPara(); flushList();
+        const headerCells = splitTableRow(line);
+        const aligns = tableAligns(lines[i + 1]);
+        const bodyRows = [];
+        let j = i + 2;
+        while (j < lines.length && lines[j].trim() !== '' && isTableRow(lines[j]) && !isTableSeparatorRow(lines[j])) {
+          bodyRows.push(splitTableRow(lines[j]));
+          j++;
+        }
+        html += buildTableHtml(headerCells, aligns, bodyRows);
+        i = j - 1;
+        continue;
+      }
 
       const heading = line.match(/^(#{1,6})[ \t]+(.*)$/);
       if (heading) {

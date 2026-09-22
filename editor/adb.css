@@ -667,6 +667,28 @@ ul.tree { padding-left: 4px; }
 .md-preview blockquote { margin: 0.4em 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-dim); }
 .md-preview img { max-width: 100%; }
 .md-preview .md-empty { color: var(--text-dim); font-style: italic; }
+.md-preview table.md-table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 12.5px;
+  max-width: 100%;
+  overflow: auto;
+  display: block;
+}
+.md-preview table.md-table th,
+.md-preview table.md-table td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  text-align: left;
+}
+.md-preview table.md-table th {
+  background: var(--strip-bg-1);
+  font-weight: 600;
+}
+.md-preview table.md-table tbody tr:nth-child(even) {
+  background: var(--strip-bg-2);
+}
+.md-preview table.md-table code { background: var(--code-bg); }
 
 /* mermaid diagram preview (read-only rendered view for %%mermaid python
    cells; double-click switches to the editable code view) */
