@@ -75,13 +75,21 @@ window.ADB_CONFIG = {
   extraPythonKeywords: [],
   extraSqlKeywords: ['DATABRICKS', 'DELTA', 'OPTIMIZE', 'VACUUM', 'ZORDER', 'CLONE', 'STREAM'],
 
-  // CDN URL used to lazily load Pyodide for in-browser Python cell execution.
-  // Leave empty to disable the "Run" button's actual execution (UI still
-  // works, but will show a message instead).
-  pyodideCdnUrl: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',
+  // URL used to lazily load Pyodide for in-browser Python cell execution.
+  // Points at the copy vendored under editor/libraries/pyodide (downloaded
+  // from the jsdelivr CDN) so the app works fully offline; swap back to a
+  // CDN URL (e.g. 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js')
+  // if you'd rather not ship the ~13MB runtime. Leave empty to disable the
+  // "Run" button's actual execution (UI still works, but will show a message
+  // instead). Pyodide's sibling files (pyodide.asm.js/.wasm, python_stdlib.zip,
+  // pyodide-lock.json) are resolved relative to this file's own directory.
+  pyodideCdnUrl: 'libraries/pyodide/pyodide.js',
 
-  // CDN URL used to lazily load Mermaid, for rendering `%%mermaid` diagrams
-  // inside Python cells. Leave empty to disable diagram rendering (the raw
-  // code will be shown instead).
-  mermaidCdnUrl: 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
+  // URL used to lazily load Mermaid, for rendering `%%mermaid` diagrams
+  // inside Python cells. Points at the copy vendored under
+  // editor/libraries/mermaid so the app works fully offline; swap back to a
+  // CDN URL (e.g. 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js')
+  // if preferred. Leave empty to disable diagram rendering (the raw code
+  // will be shown instead).
+  mermaidCdnUrl: 'libraries/mermaid/mermaid.min.js',
 };

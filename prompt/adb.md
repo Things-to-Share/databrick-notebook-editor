@@ -15,6 +15,15 @@ I need a html page to add and edit Databricks Notebooks locally.
 - for CSS `adb.css`
 - for configuration or utility files `adb.config.js` to keep track of user settings
 
+### Offline / Local Libraries
+
+- The editor must be able to run with **no internet connection** once the project folder has been downloaded/cloned.
+- Any third-party library the editor depends on (e.g. Pyodide for in-browser Python execution, Mermaid for diagram rendering) must be **vendored locally inside the project**, not loaded from a public CDN at runtime.
+    - Vendored libraries live under `editor/libraries/<library-name>/`.
+    - `adb.config.js` must reference these local paths (e.g. `libraries/pyodide/pyodide.js`, `libraries/mermaid/mermaid.min.js`) instead of CDN URLs.
+    - Where a library fetches additional sibling files at runtime (e.g. Pyodide's `.asm.js`/`.wasm`/stdlib files), those must be resolved relative to the local vendored folder as well, so nothing is fetched externally.
+    - The CDN URL should remain configurable/swappable in `adb.config.js` for users who prefer not to ship the vendored files, but the shipped default must be the local, offline-capable path.
+
 ### Features
 
 - The editor should be able to handle different file types commonly used in Databricks Notebooks, including SQL, Python, Markdown, and YAML.

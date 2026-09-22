@@ -2286,11 +2286,16 @@
     if (pyodidePromise) return pyodidePromise;
     const cdnUrl = CONFIG.pyodideCdnUrl;
     if (!cdnUrl) return Promise.reject(new Error('Python execution is disabled (no pyodideCdnUrl configured).'));
+    // Pyodide fetches its sibling files (pyodide.asm.js/.wasm, python_stdlib.zip,
+    // pyodide-lock.json) relative to an `indexURL`; derive it from the script
+    // URL so this works whether pyodideCdnUrl points at a CDN or the locally
+    // vendored copy under editor/libraries/pyodide.
+    const indexURL = cdnUrl.slice(0, cdnUrl.lastIndexOf('/') + 1);
     pyodidePromise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = cdnUrl;
       script.onload = async () => {
-        try { resolve(await window.loadPyodide()); } catch (e) { reject(e); }
+        try { resolve(await window.loadPyodide({ indexURL })); } catch (e) { reject(e); }
       };
       script.onerror = () => reject(new Error('Could not load the Python runtime (are you offline?).'));
       document.head.appendChild(script);
