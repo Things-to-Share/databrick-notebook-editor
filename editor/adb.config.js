@@ -79,4 +79,9 @@ window.ADB_CONFIG = {
   // Leave empty to disable the "Run" button's actual execution (UI still
   // works, but will show a message instead).
   pyodideCdnUrl: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',
+
+  // CDN URL used to lazily load Mermaid, for rendering `%%mermaid` diagrams
+  // inside Python cells. Leave empty to disable diagram rendering (the raw
+  // code will be shown instead).
+  mermaidCdnUrl: 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
 };

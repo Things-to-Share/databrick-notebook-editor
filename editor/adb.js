@@ -578,6 +578,19 @@
     return html || '<p class="md-empty">(empty markdown cell)</p>';
   }
 
+  // A python cell whose first non-empty line is the `%%mermaid` marker is
+  // rendered as a Mermaid diagram instead of a plain code editor.
+  function isMermaidCell(source) {
+    const firstLine = (source || '').split(/\r?\n/, 1)[0].trim();
+    return /^%%mermaid$/i.test(firstLine);
+  }
+
+  function stripMermaidMarker(source) {
+    const lines = (source || '').split(/\r?\n/);
+    if (/^%%mermaid$/i.test((lines[0] || '').trim())) lines.shift();
+    return lines.join('\n');
+  }
+
   // Resolve the effective language of a cell: an explicit per-cell language
   // (e.g. from a %sql/%md magic, or an ipynb markdown cell_type) always wins;
   // otherwise the cell inherits the notebook's default language.
@@ -1885,7 +1898,7 @@
       renderPlainEditor(record, pe.cells, paneId);
     } else {
       pe.addCellBtn.classList.remove('hidden');
-      record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set() };
+      record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set(), mermaidEditing: new Set() };
       const outline = buildOutline(record);
       record.__outlineRanges = outline.ranges;
       record.cells.forEach((cell, idx) => {
@@ -1941,7 +1954,8 @@
     const isIpynb = record.kind === 'ipynb';
     const effectiveLang = getCellLanguage(record, cell);
     const isMarkdown = effectiveLang === 'markdown';
-    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set() };
+    const isMermaid = effectiveLang === 'python' && isMermaidCell(cell.source);
+    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set(), mermaidEditing: new Set() };
     const isCollapsed = record.ui.collapsedCells.has(idx);
 
     const cellDiv = document.createElement('div');
@@ -2116,6 +2130,25 @@
         });
         wrap.appendChild(preview);
       }
+    } else if (isMermaid) {
+      const editing = record.ui.mermaidEditing.has(idx);
+      if (editing) {
+        wrap.appendChild(buildCodeEditor(cell, effectiveLang, record, paneId, cellDiv, () => {
+          record.ui.mermaidEditing.delete(idx);
+          renderPane(paneId);
+        }));
+      } else {
+        const preview = document.createElement('div');
+        preview.className = 'mermaid-preview';
+        preview.title = 'Double-click to edit the Mermaid diagram code';
+        preview.textContent = 'Rendering diagram\u2026';
+        preview.addEventListener('dblclick', () => {
+          record.ui.mermaidEditing.add(idx);
+          renderPane(paneId);
+        });
+        wrap.appendChild(preview);
+        renderMermaidDiagram(cell.source, preview);
+      }
     } else {
       wrap.appendChild(buildCodeEditor(cell, effectiveLang, record, paneId, cellDiv, null));
     }
@@ -2203,6 +2236,39 @@
     return pyodidePromise;
   }
 
+  let mermaidPromise = null;
+  function loadMermaidRuntime() {
+    if (mermaidPromise) return mermaidPromise;
+    const cdnUrl = CONFIG.mermaidCdnUrl;
+    if (!cdnUrl) return Promise.reject(new Error('Mermaid rendering is disabled (no mermaidCdnUrl configured).'));
+    mermaidPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = cdnUrl;
+      script.onload = () => {
+        try {
+          window.mermaid.initialize({ startOnLoad: false, theme: state.theme === 'light' ? 'default' : 'dark' });
+          resolve(window.mermaid);
+        } catch (e) { reject(e); }
+      };
+      script.onerror = () => reject(new Error('Could not load Mermaid (are you offline?).'));
+      document.head.appendChild(script);
+    });
+    return mermaidPromise;
+  }
+
+  let mermaidRenderSeq = 0;
+  async function renderMermaidDiagram(source, container) {
+    const code = stripMermaidMarker(source);
+    try {
+      const mermaid = await loadMermaidRuntime();
+      const id = 'mermaid-diagram-' + (++mermaidRenderSeq);
+      const { svg } = await mermaid.render(id, code);
+      container.innerHTML = svg;
+    } catch (err) {
+      container.innerHTML = `<pre class="output-text output-error-text">${escapeHtml('Mermaid render failed: ' + (err && err.message ? err.message : err))}</pre>`;
+    }
+  }
+
   async function runCell(record, cell, effectiveLang, outputDiv) {
     outputDiv.classList.remove('hidden', 'output-error');
     if (effectiveLang === 'sql') {
@@ -2288,7 +2354,7 @@
     el.structureResizer.classList.toggle('hidden', !isNotebook);
     el.structureContainer.innerHTML = '';
     if (!isNotebook) return;
-    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set() };
+    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set(), mermaidEditing: new Set() };
     const outline = buildOutline(record);
     record.__outlineRanges = outline.ranges;
     const rootUl = document.createElement('ul');
@@ -2361,7 +2427,7 @@
     const path = state.panes[paneId].activePath;
     const record = path ? state.openFiles.get(path) : null;
     if (!record || !record.__outlineRanges) return;
-    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set() };
+    record.ui = record.ui || { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set(), mermaidEditing: new Set() };
     const anyCollapsed = record.ui.collapsedSections.size > 0;
     if (anyCollapsed) {
       record.ui.collapsedSections.clear();

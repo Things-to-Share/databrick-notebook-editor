@@ -668,6 +668,18 @@ ul.tree { padding-left: 4px; }
 .md-preview img { max-width: 100%; }
 .md-preview .md-empty { color: var(--text-dim); font-style: italic; }
 
+/* mermaid diagram preview (read-only rendered view for %%mermaid python
+   cells; double-click switches to the editable code view) */
+.mermaid-preview {
+  padding: 12px;
+  cursor: pointer;
+  text-align: center;
+  overflow: auto;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.mermaid-preview svg { max-width: 100%; font-style: normal; }
+
 /* cell execution output */
 .cell-output {
   border-top: 1px solid var(--border);

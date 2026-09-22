@@ -120,6 +120,9 @@ I need a html page to add and edit Databricks Notebooks locally.
 - Python cell should support basic Python features such as variables, functions, loops, and conditionals.
 - Python cell should provide error messages and debugging information when code execution fails.
 - The syntax highlighting should work both with darkmode and lightmode.
+- ***Mermaid***
+    - Should there be python cell which contains `%%mermaid` followed by a Mermaid diagram, it should be properly formatted and rendered within the cell.
+    - double-clicking the diagram should allow editing the Mermaid code directly within the cell.
 
 #### Other extentions
 
