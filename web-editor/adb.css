@@ -622,6 +622,14 @@ ul.tree { padding-left: 4px; }
 
 .cell-body { display: block; }
 
+/* Plain pass-through container for a cell's content (code editor, markdown
+   preview, or mermaid preview) - deliberately NOT ".cell-editor-wrap" (that
+   class is buildCodeEditor()'s own internal flex row) so the code editor
+   isn't nested inside a second, width-less flex container that would
+   collapse it to its content's intrinsic width instead of the full cell
+   width. */
+.cell-editor-host { display: block; width: 100%; }
+
 .cell-editor-wrap {
   position: relative;
   display: flex;

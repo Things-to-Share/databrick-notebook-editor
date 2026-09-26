@@ -230,6 +230,14 @@ select, input[type="text"] {
 
 .cell-body { display: block; }
 
+/* Plain pass-through container for a cell's content (code editor, markdown
+   preview, or mermaid preview) - deliberately NOT ".cell-editor-wrap" (that
+   class is buildCodeEditor()'s own internal flex row) so the code editor
+   isn't nested inside a second, width-less flex container that would
+   collapse it to its content's intrinsic width instead of the full cell
+   width. */
+.cell-editor-host { display: block; width: 100%; }
+
 /* mermaid diagram preview (read-only rendered view for %%mermaid python
    cells; double-click switches to the editable code view) */
 .mermaid-preview {

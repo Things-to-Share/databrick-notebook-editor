@@ -95,6 +95,7 @@ All generated / updated files should be placed within the project folder structu
         - The cell content should support rich text formatting for markdown cells, including headings, lists, links, and code blocks.
         - The cell content should automatically adjust its height to fit the content, ensuring a smooth editing experience.
         - The cell content text input element (the code/markdown editing textarea and its syntax-highlight overlay) must utilize the full available width of the cell, stretching edge-to-edge regardless of the length of the longest line, so users always have the maximum horizontal space to write code.
+            - The pass-through container that hosts the code editor / markdown preview / mermaid preview inside a cell body must NOT reuse the code editor's own internal flex-row class (e.g. `cell-editor-wrap`) for itself. Nesting two elements with that same class collapses the inner editor to its content's intrinsic (text-driven) width instead of stretching it to the full cell width - use a distinct wrapper class (e.g. `cell-editor-host`) with `display: block; width: 100%;` for that outer, generic container.
         - The cell should display visual feedback for programming language on the left side in the form of colored bar.
         - The Cell should be greyed out or visually distinguished when it is marked to be skipped during execution.
     - Default-language dropdown menu

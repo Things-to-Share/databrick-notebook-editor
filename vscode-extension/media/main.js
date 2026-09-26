@@ -1059,8 +1059,14 @@
 
     const body = document.createElement('div');
     body.className = 'cell-body';
+    // NOTE: this is a plain pass-through container, not the flex layout used
+    // by the code editor itself - buildCodeEditor() builds its own
+    // '.cell-editor-wrap' (gutter + editor flex row). Nesting two elements
+    // with that same class here would put the inner flex row inside an outer
+    // flex row with no width rule of its own, collapsing it to its content's
+    // intrinsic width instead of stretching to the cell's full width.
     const wrap = document.createElement('div');
-    wrap.className = 'cell-editor-wrap';
+    wrap.className = 'cell-editor-host';
 
     if (isMarkdown) {
       const editing = state.ui.mdEditing.has(idx) || !cell.source;
