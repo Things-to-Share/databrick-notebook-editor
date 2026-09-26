@@ -40,6 +40,26 @@
     'CAST','EXISTS','MERGE','USE','SCHEMA','DATABASE','DATABRICKS','DELTA','OPTIMIZE','VACUUM',
     'ZORDER','CLONE','STREAM'];
 
+  const JS_KEYWORDS = ['const','let','var','function','return','if','else','for','while','do','switch',
+    'case','break','continue','class','extends','new','this','typeof','instanceof','in','of','try',
+    'catch','finally','throw','async','await','yield','import','export','default','from','null',
+    'undefined','true','false','void','delete','static','get','set'];
+
+  const PS_KEYWORDS = ['function','param','if','else','elseif','foreach','for','while','do','switch',
+    'return','break','continue','try','catch','finally','throw','begin','process','end','class',
+    'enum','in','trap'];
+
+  // Maps a file extension (as seen by "other extensions" / plain files) to a
+  // syntax-highlighting language key understood by highlightForLanguage().
+  const EXT_LANGUAGE_MAP = {
+    py: 'python', sql: 'sql', md: 'markdown', markdown: 'markdown',
+    yml: 'yaml', yaml: 'yaml', json: 'json', xml: 'xml',
+    html: 'html', htm: 'html', css: 'css', js: 'javascript', ps1: 'powershell',
+  };
+  function mapExtToHighlightLanguage(ext) {
+    return EXT_LANGUAGE_MAP[ext] || '';
+  }
+
   function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -289,10 +309,76 @@
     return escapeHtml(src);
   }
 
+  function highlightJson(src) {
+    return tokenize(src, [
+      { re: /"(?:[^"\\]|\\.)*"(?=\s*:)/g, cls: 'tok-prop' },
+      { re: /"(?:[^"\\]|\\.)*"/g, cls: 'tok-str' },
+      { re: /\b(true|false|null)\b/g, cls: 'tok-kw' },
+      { re: /-?\b\d+(\.\d+)?([eE][+-]?\d+)?\b/g, cls: 'tok-num' },
+    ]);
+  }
+
+  function highlightYaml(src) {
+    return tokenize(src, [
+      { re: /#.*$/gm, cls: 'tok-com' },
+      { re: /^[ \t]*[A-Za-z0-9_.-]+(?=\s*:)/gm, cls: 'tok-prop' },
+      { re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, cls: 'tok-str' },
+      { re: /\b\d+(\.\d+)?\b/g, cls: 'tok-num' },
+      { re: /^\s*-(?=\s|$)/gm, cls: 'tok-kw' },
+    ]);
+  }
+
+  function highlightMarkup(src) {
+    return tokenize(src, [
+      { re: /<!--[\s\S]*?-->/g, cls: 'tok-com' },
+      { re: /<\/?[A-Za-z][A-Za-z0-9:_-]*/g, cls: 'tok-tag' },
+      { re: /[A-Za-z_:][A-Za-z0-9_:.-]*(?==")/g, cls: 'tok-attr' },
+      { re: /"(?:[^"\\]|\\.)*"/g, cls: 'tok-str' },
+    ]);
+  }
+
+  function highlightCss(src) {
+    return tokenize(src, [
+      { re: /\/\*[\s\S]*?\*\//g, cls: 'tok-com' },
+      { re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, cls: 'tok-str' },
+      { re: /[.#]?[A-Za-z_-][A-Za-z0-9_-]*(?=\s*\{)/g, cls: 'tok-tag' },
+      { re: /[A-Za-z-]+(?=\s*:)/g, cls: 'tok-prop' },
+      { re: /#[0-9a-fA-F]{3,8}\b/g, cls: 'tok-num' },
+    ]);
+  }
+
+  function highlightJs(src) {
+    return tokenize(src, [
+      { re: /\/\/.*$/gm, cls: 'tok-com' },
+      { re: /\/\*[\s\S]*?\*\//g, cls: 'tok-com' },
+      { re: /(`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, cls: 'tok-str' },
+      { re: /\b\d+(\.\d+)?\b/g, cls: 'tok-num' },
+      { re: new RegExp(`\\b(${JS_KEYWORDS.join('|')})\\b`, 'g'), cls: 'tok-kw' },
+      { re: /\b([A-Za-z_$][A-Za-z0-9_$]*)(?=\()/g, cls: 'tok-fn' },
+    ]);
+  }
+
+  function highlightPowershell(src) {
+    return tokenize(src, [
+      { re: /#.*$/gm, cls: 'tok-com' },
+      { re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, cls: 'tok-str' },
+      { re: /\$[A-Za-z_][A-Za-z0-9_]*/g, cls: 'tok-fn' },
+      { re: /\b\d+(\.\d+)?\b/g, cls: 'tok-num' },
+      { re: new RegExp(`\\b(${PS_KEYWORDS.join('|')})\\b`, 'gi'), cls: 'tok-kw' },
+      { re: /-[A-Za-z]+\b/g, cls: 'tok-prop' },
+    ]);
+  }
+
   function highlightForLanguage(source, language) {
     if (language === 'sql') return highlightSql(source);
     if (language === 'python') return highlightPython(source);
     if (language === 'markdown') return highlightMarkdown(source);
+    if (language === 'json') return highlightJson(source);
+    if (language === 'yaml') return highlightYaml(source);
+    if (language === 'xml' || language === 'html') return highlightMarkup(source);
+    if (language === 'css') return highlightCss(source);
+    if (language === 'javascript') return highlightJs(source);
+    if (language === 'powershell') return highlightPowershell(source);
     return highlightPlain(source);
   }
 
@@ -495,26 +581,86 @@
   }
 
   // -----------------------------------------------------------------------
+  // Python cell execution (lazily-loaded Pyodide, vendored under
+  // media/libraries/pyodide - its webview base URI is injected as
+  // window.__pyodideBaseUri by extension.js). SQL/Markdown cells are not
+  // executable here (no local warehouse to connect to).
+  // -----------------------------------------------------------------------
+
+  let pyodidePromise = null;
+  function loadPyodideRuntime() {
+    if (pyodidePromise) return pyodidePromise;
+    if (!window.__pyodideBaseUri) return Promise.reject(new Error('Python execution is unavailable (no pyodideBaseUri configured).'));
+    pyodidePromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = window.__pyodideBaseUri + 'pyodide.js';
+      script.onload = () => {
+        window.loadPyodide({ indexURL: window.__pyodideBaseUri }).then(resolve, reject);
+      };
+      script.onerror = () => reject(new Error('Could not load the Pyodide runtime.'));
+      document.head.appendChild(script);
+    });
+    return pyodidePromise;
+  }
+
+  async function runPythonCell(idx, cell) {
+    state.ui.cellOutputs.set(idx, { status: 'running', text: '' });
+    renderCellOutputOnly(idx);
+    let out = '';
+    try {
+      const pyodide = await loadPyodideRuntime();
+      pyodide.setStdout({ batched: (s) => { out += s + '\n'; } });
+      pyodide.setStderr({ batched: (s) => { out += s + '\n'; } });
+      const result = await pyodide.runPythonAsync(cell.source);
+      if (result !== undefined && result !== null && result !== '') out += String(result);
+      state.ui.cellOutputs.set(idx, { status: 'ok', text: out });
+    } catch (err) {
+      state.ui.cellOutputs.set(idx, { status: 'error', text: out + (err && err.message ? err.message : String(err)) });
+    }
+    renderCellOutputOnly(idx);
+  }
+
+  // -----------------------------------------------------------------------
   // State
   // -----------------------------------------------------------------------
 
   const state = {
     record: null,
     fileName: '',
-    ui: { collapsedCells: new Set(), mdEditing: new Set(), collapsedSections: new Set(), mermaidEditing: new Set() },
+    dirty: false,
+    lastSavedAt: null,
+    uiStateLoaded: false,
+    activeCellIndex: null,
+    structureRows: [],
+    ui: {
+      collapsedCells: new Set(),
+      mdEditing: new Set(),
+      collapsedSections: new Set(),
+      mermaidEditing: new Set(),
+      cellOutputs: new Map(),
+      autoSave: true,
+      structureSearch: '',
+      structurePanelWidth: null,
+    },
     lastSentText: null,
     outlineRanges: new Map(),
+    lastOutline: null,
   };
 
   const el = {
     toolbar: document.getElementById('toolbar'),
     addCellBtn: document.getElementById('btn-add-cell'),
     defaultLangSelect: document.getElementById('default-lang'),
+    autoSaveCheckbox: document.getElementById('autosave-checkbox'),
+    btnSave: document.getElementById('btn-save'),
+    lastSavedText: document.getElementById('last-saved-text'),
     statusText: document.getElementById('status-text'),
     cellsContainer: document.getElementById('cells'),
     plainEmpty: document.getElementById('plain-empty'),
     structurePanel: document.getElementById('structure-panel'),
     structureContainer: document.getElementById('structure-container'),
+    structureSearch: document.getElementById('structure-search'),
+    structureResizeHandle: document.getElementById('structure-resize-handle'),
     btnStructureCollapse: document.getElementById('btn-structure-collapse'),
   };
 
@@ -542,15 +688,72 @@
     return record.content;
   }
 
-  const sendEditDebounced = debounce(() => {
+  function convertPlainToNotebook() {
+    const record = state.record;
+    if (!record || record.kind !== 'plain') return;
+    const token = COMMENT_TOKEN[record.ext] || '#';
+    const defaultLang = record.ext === 'sql' ? 'sql' : 'python';
+    // The original content is preserved verbatim in the first (and only) cell.
+    state.record = {
+      kind: 'notebook',
+      ext: record.ext,
+      token,
+      defaultLang,
+      cells: [{ title: '', language: '', skip: false, source: record.content }],
+    };
+    markChanged();
+    render();
+  }
+
+  function doSendEdit() {
+    if (!state.record) return;
     const text = serializeRecord(state.record);
     state.lastSentText = text;
     vscodeApi.postMessage({ type: 'edit', text });
-  }, 400);
+    state.dirty = false;
+    state.lastSavedAt = new Date();
+    updateSaveIndicator();
+  }
+
+  const sendEditDebounced = debounce(doSendEdit, 400);
 
   function markChanged() {
-    sendEditDebounced();
+    state.dirty = true;
+    updateSaveIndicator();
+    if (state.ui.autoSave) sendEditDebounced();
   }
+
+  function forceSave() {
+    sendEditDebounced.cancel();
+    doSendEdit();
+  }
+
+  function updateSaveIndicator() {
+    if (!el.toolbar) return;
+    el.toolbar.classList.toggle('autosave-on', !!state.ui.autoSave);
+    el.toolbar.classList.toggle('autosave-off', !state.ui.autoSave);
+    el.toolbar.classList.toggle('dirty', !!state.dirty);
+    if (!el.lastSavedText) return;
+    if (state.dirty && !state.ui.autoSave) {
+      el.lastSavedText.textContent = 'Unsaved changes';
+    } else if (state.lastSavedAt) {
+      el.lastSavedText.textContent = 'Saved ' + state.lastSavedAt.toLocaleTimeString();
+    } else {
+      el.lastSavedText.textContent = '';
+    }
+  }
+
+  const sendUiStateDebounced = debounce(() => {
+    vscodeApi.postMessage({
+      type: 'uiState',
+      uiState: {
+        autoSave: state.ui.autoSave,
+        collapsedSections: Array.from(state.ui.collapsedSections),
+        collapsedCells: Array.from(state.ui.collapsedCells),
+        structurePanelWidth: state.ui.structurePanelWidth || null,
+      },
+    });
+  }, 300);
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -558,7 +761,19 @@
     if (msg.text === state.lastSentText) return; // echo of our own edit - UI is already correct
     state.fileName = msg.fileName;
     state.lastSentText = msg.text;
+    if (!state.uiStateLoaded) {
+      state.uiStateLoaded = true;
+      const persisted = msg.uiState;
+      if (persisted) {
+        if (typeof persisted.autoSave === 'boolean') state.ui.autoSave = persisted.autoSave;
+        if (Array.isArray(persisted.collapsedSections)) state.ui.collapsedSections = new Set(persisted.collapsedSections);
+        if (Array.isArray(persisted.collapsedCells)) state.ui.collapsedCells = new Set(persisted.collapsedCells);
+        if (persisted.structurePanelWidth) state.ui.structurePanelWidth = persisted.structurePanelWidth;
+      }
+      if (el.autoSaveCheckbox) el.autoSaveCheckbox.checked = state.ui.autoSave;
+    }
     state.record = buildRecordFromText(msg.text, msg.ext);
+    updateSaveIndicator();
     render();
   });
 
@@ -600,11 +815,38 @@
       el.addCellBtn.classList.add('hidden');
       el.defaultLangSelect.classList.add('hidden');
       el.structurePanel.classList.add('hidden');
+      el.structureResizeHandle.classList.add('hidden');
       el.plainEmpty.classList.remove('hidden');
-      el.plainEmpty.textContent = `"${state.fileName}" is not a Databricks notebook source file (missing the ` +
-        '"Databricks notebook source" header) - open it in a regular text editor instead.';
+      el.plainEmpty.innerHTML = '';
       el.cellsContainer.innerHTML = '';
       setStatus(state.fileName);
+
+      const canConvert = record.ext === 'py' || record.ext === 'sql';
+      const banner = document.createElement('div');
+      banner.className = 'plain-warning-banner';
+      if (canConvert) {
+        banner.textContent = `"${state.fileName}" is not formatted as a Databricks notebook (missing the ` +
+          '"Databricks notebook source" header) - it may not be fully compatible with this editor.';
+        const convertBtn = document.createElement('button');
+        convertBtn.textContent = 'Convert to Databricks Notebook';
+        convertBtn.title = 'Wrap the current file content as the first cell of a new Databricks notebook';
+        convertBtn.addEventListener('click', () => convertPlainToNotebook());
+        banner.appendChild(document.createElement('br'));
+        banner.appendChild(convertBtn);
+      } else {
+        banner.textContent = `Showing "${state.fileName}" as a single, syntax-highlighted editor (this file type has no Databricks cell markers).`;
+      }
+      el.plainEmpty.appendChild(banner);
+
+      const editorHost = document.createElement('div');
+      editorHost.className = 'plain-editor-host';
+      el.plainEmpty.appendChild(editorHost);
+      const lang = mapExtToHighlightLanguage(record.ext);
+      const contentProxy = {
+        get source() { return record.content; },
+        set source(v) { record.content = v; },
+      };
+      editorHost.appendChild(buildCodeEditor(contentProxy, lang, el.plainEmpty, null));
       return;
     }
 
@@ -620,12 +862,18 @@
     el.cellsContainer.innerHTML = '';
     const outline = buildOutline(record);
     state.outlineRanges = outline.ranges;
+    state.lastOutline = outline;
     record.cells.forEach((cell, idx) => {
       if (isCellHiddenBySection(idx, outline.ranges)) return;
       renderCell(record, cell, idx, el.cellsContainer);
     });
 
+    if (state.ui.structurePanelWidth) {
+      el.structurePanel.style.width = state.ui.structurePanelWidth + 'px';
+    }
+    el.structureResizeHandle.classList.remove('hidden');
     renderStructurePanel(record, outline);
+    scheduleActiveHighlightUpdate();
   }
 
   function renderCell(record, cell, idx, container) {
@@ -639,8 +887,38 @@
     cellDiv.className = 'cell cell-lang-' + cellLangCssKey(effectiveLang) + (cell.skip ? ' cell-skipped' : '') + (isCollapsed ? ' cell-collapsed' : '');
     cellDiv.id = `cell-${idx}`;
 
+    cellDiv.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      cellDiv.classList.add('drag-over');
+    });
+    cellDiv.addEventListener('dragleave', () => cellDiv.classList.remove('drag-over'));
+    cellDiv.addEventListener('drop', (e) => {
+      e.preventDefault();
+      cellDiv.classList.remove('drag-over');
+      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (Number.isNaN(fromIdx) || fromIdx === idx) return;
+      const [moved] = record.cells.splice(fromIdx, 1);
+      const targetIndex = fromIdx < idx ? idx - 1 : idx;
+      record.cells.splice(targetIndex, 0, moved);
+      markChanged();
+      render();
+    });
+
     const titleBar = document.createElement('div');
     titleBar.className = 'cell-title-bar';
+
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'cell-drag-handle';
+    dragHandle.title = 'Drag to reorder this cell';
+    dragHandle.textContent = '\u2630';
+    dragHandle.draggable = true;
+    dragHandle.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', String(idx));
+      e.dataTransfer.effectAllowed = 'move';
+      cellDiv.classList.add('dragging');
+    });
+    dragHandle.addEventListener('dragend', () => cellDiv.classList.remove('dragging'));
+    titleBar.appendChild(dragHandle);
 
     const collapseBtn = mkIconBtn(isCollapsed ? '\u25B8' : '\u25BE', isCollapsed ? 'Expand cell' : 'Collapse cell', () => {
       if (state.ui.collapsedCells.has(idx)) state.ui.collapsedCells.delete(idx);
@@ -720,6 +998,14 @@
       toolbar.appendChild(skipLabel);
     }
 
+    if (effectiveLang === 'python' && !isMermaid) {
+      const runBtn = mkIconBtn('\u25B6', 'Run this cell (Python, via a locally-vendored Pyodide)', () => {
+        runPythonCell(idx, cell);
+      });
+      runBtn.classList.add('btn-run-cell');
+      toolbar.appendChild(runBtn);
+    }
+
     const spacer = document.createElement('span');
     spacer.className = 'spacer';
     toolbar.appendChild(spacer);
@@ -736,10 +1022,16 @@
       markChanged();
       render();
     });
-    const btnAddBelow = mkIconBtn('+', 'Insert cell below', () => {
-      record.cells.splice(idx + 1, 0, isIpynb
-        ? { cell_type: 'code', title: '', language: '', skip: false, source: '', metadata: {}, outputs: [], execution_count: null }
-        : { title: '', language: '', skip: false, source: '' });
+    const newCellTemplate = () => (isIpynb
+      ? { cell_type: 'code', title: '', language: '', skip: false, source: '', metadata: {}, outputs: [], execution_count: null }
+      : { title: '', language: '', skip: false, source: '' });
+    const btnAddAbove = mkIconBtn('+\u2191', 'Insert cell above', () => {
+      record.cells.splice(idx, 0, newCellTemplate());
+      markChanged();
+      render();
+    });
+    const btnAddBelow = mkIconBtn('+\u2193', 'Insert cell below', () => {
+      record.cells.splice(idx + 1, 0, newCellTemplate());
       markChanged();
       render();
     });
@@ -751,6 +1043,7 @@
     });
     toolbar.appendChild(btnUp);
     toolbar.appendChild(btnDown);
+    toolbar.appendChild(btnAddAbove);
     toolbar.appendChild(btnAddBelow);
     toolbar.appendChild(btnDelete);
 
@@ -804,7 +1097,39 @@
 
     body.appendChild(wrap);
     cellDiv.appendChild(body);
+    appendCellOutput(cellDiv, idx);
     container.appendChild(cellDiv);
+  }
+
+  // Renders (or re-renders in place, without a full notebook re-render) the
+  // captured stdout/stderr/error text for a Python cell run via Pyodide.
+  function buildCellOutputNode(idx) {
+    const info = state.ui.cellOutputs.get(idx);
+    if (!info) return null;
+    const outDiv = document.createElement('div');
+    outDiv.className = 'cell-output' + (info.status === 'error' ? ' cell-output-error' : '');
+    if (info.status === 'running') {
+      outDiv.innerHTML = '<pre class="output-text">Running\u2026</pre>';
+    } else {
+      const pre = document.createElement('pre');
+      pre.className = 'output-text' + (info.status === 'error' ? ' output-error-text' : '');
+      pre.textContent = info.text || '(no output)';
+      outDiv.appendChild(pre);
+    }
+    return outDiv;
+  }
+
+  function appendCellOutput(cellDiv, idx) {
+    const node = buildCellOutputNode(idx);
+    if (node) cellDiv.appendChild(node);
+  }
+
+  function renderCellOutputOnly(idx) {
+    const cellDiv = document.getElementById(`cell-${idx}`);
+    if (!cellDiv) { render(); return; }
+    const existing = cellDiv.querySelector('.cell-output');
+    if (existing) existing.remove();
+    appendCellOutput(cellDiv, idx);
   }
 
   function buildCodeEditor(cell, effectiveLang, cellDiv, onBlurExtra) {
@@ -897,13 +1222,29 @@
     return false;
   }
 
+  function filterOutlineTree(nodes, query) {
+    if (!query) return nodes;
+    const result = [];
+    for (const node of nodes) {
+      const selfMatch = node.text.toLowerCase().includes(query);
+      const filteredChildren = node.children ? filterOutlineTree(node.children, query) : [];
+      if (selfMatch || filteredChildren.length) {
+        result.push(Object.assign({}, node, { children: selfMatch ? (node.children || []) : filteredChildren }));
+      }
+    }
+    return result;
+  }
+
   function renderStructurePanel(record, outline) {
     el.structurePanel.classList.remove('hidden');
     el.structureContainer.innerHTML = '';
+    state.structureRows = [];
     const rootUl = document.createElement('ul');
     rootUl.className = 'structure-tree';
-    renderOutlineNodes(outline.tree, rootUl);
+    const query = (state.ui.structureSearch || '').toLowerCase();
+    renderOutlineNodes(filterOutlineTree(outline.tree, query), rootUl);
     el.structureContainer.appendChild(rootUl);
+    updateActiveStructureHighlight();
   }
 
   function renderOutlineNodes(nodes, container) {
@@ -921,6 +1262,7 @@
           ev.stopPropagation();
           if (collapsed) state.ui.collapsedSections.delete(node.key);
           else state.ui.collapsedSections.add(node.key);
+          sendUiStateDebounced();
           render();
         });
       }
@@ -932,6 +1274,7 @@
       row.appendChild(label);
       row.addEventListener('click', () => scrollToCell(node.cellIndex));
       li.appendChild(row);
+      state.structureRows.push({ el: row, cellIndex: node.cellIndex, key: node.key, isHeading: node.type === 'heading' });
 
       if (node.type === 'heading' && node.children.length) {
         const childUl = document.createElement('ul');
@@ -944,6 +1287,50 @@
     }
   }
 
+  // Scrollspy-style "where am I" highlight: the structure-panel entry for the
+  // section/cell nearest the top of the viewport gets an `.active` class.
+  function computeActiveCellIndex() {
+    const cells = el.cellsContainer.querySelectorAll('.cell');
+    if (!cells.length) return null;
+    const threshold = 90; // just below the sticky toolbar
+    let active = null;
+    for (const cellEl of cells) {
+      if (cellEl.getBoundingClientRect().top <= threshold) active = cellEl;
+      else break;
+    }
+    if (!active) active = cells[0];
+    return parseInt(active.id.replace('cell-', ''), 10);
+  }
+
+  function updateActiveStructureHighlight() {
+    const idx = state.activeCellIndex;
+    for (const row of state.structureRows) {
+      let match = false;
+      if (row.isHeading) {
+        const range = state.outlineRanges.get(row.key);
+        match = !!range && idx !== null && idx >= range.start && idx <= range.end;
+      } else {
+        match = row.cellIndex === idx;
+      }
+      row.el.classList.toggle('active', match);
+    }
+  }
+
+  let activeHighlightScheduled = false;
+  function scheduleActiveHighlightUpdate() {
+    if (activeHighlightScheduled) return;
+    activeHighlightScheduled = true;
+    requestAnimationFrame(() => {
+      activeHighlightScheduled = false;
+      if (state.record && state.record.kind !== 'plain') {
+        const idx = computeActiveCellIndex();
+        state.activeCellIndex = idx;
+      }
+      updateActiveStructureHighlight();
+    });
+  }
+  window.addEventListener('scroll', scheduleActiveHighlightUpdate, true);
+
   function scrollToCell(cellIndex) {
     let changed = false;
     for (const [key, range] of state.outlineRanges) {
@@ -952,7 +1339,7 @@
         changed = true;
       }
     }
-    if (changed) render();
+    if (changed) { sendUiStateDebounced(); render(); }
     requestAnimationFrame(() => {
       const cellEl = document.getElementById(`cell-${cellIndex}`);
       if (cellEl) {
@@ -963,13 +1350,43 @@
     });
   }
 
+  el.structureSearch.addEventListener('input', () => {
+    state.ui.structureSearch = el.structureSearch.value.trim();
+    if (!state.record || state.record.kind === 'plain' || !state.lastOutline) return;
+    renderStructurePanel(state.record, state.lastOutline);
+  });
+
   el.btnStructureCollapse.addEventListener('click', () => {
     if (!state.outlineRanges.size) return;
     const anyCollapsed = state.ui.collapsedSections.size > 0;
     if (anyCollapsed) state.ui.collapsedSections.clear();
     else for (const key of state.outlineRanges.keys()) state.ui.collapsedSections.add(key);
+    sendUiStateDebounced();
     render();
   });
+
+  // Drag-to-resize the structure panel width.
+  (() => {
+    let resizing = false;
+    el.structureResizeHandle.addEventListener('mousedown', (e) => {
+      resizing = true;
+      e.preventDefault();
+      document.body.style.cursor = 'col-resize';
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!resizing) return;
+      const mainRect = document.getElementById('main').getBoundingClientRect();
+      const newWidth = Math.max(160, Math.min(600, mainRect.right - e.clientX));
+      state.ui.structurePanelWidth = newWidth;
+      el.structurePanel.style.width = newWidth + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (!resizing) return;
+      resizing = false;
+      document.body.style.cursor = '';
+      sendUiStateDebounced();
+    });
+  })();
 
   // -----------------------------------------------------------------------
   // Toolbar wiring
@@ -991,5 +1408,21 @@
     pinCellLanguagesToOldDefault(state.record, oldDefaultLang, state.record.defaultLang);
     markChanged();
     render();
+  });
+
+  el.autoSaveCheckbox.addEventListener('change', () => {
+    state.ui.autoSave = el.autoSaveCheckbox.checked;
+    updateSaveIndicator();
+    sendUiStateDebounced();
+    if (state.ui.autoSave && state.dirty) forceSave();
+  });
+
+  el.btnSave.addEventListener('click', () => forceSave());
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      forceSave();
+    }
   });
 })();

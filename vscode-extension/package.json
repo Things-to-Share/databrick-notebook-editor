@@ -22,7 +22,17 @@
         "selector": [
           { "filenamePattern": "*.py" },
           { "filenamePattern": "*.sql" },
-          { "filenamePattern": "*.ipynb" }
+          { "filenamePattern": "*.ipynb" },
+          { "filenamePattern": "*.md" },
+          { "filenamePattern": "*.yml" },
+          { "filenamePattern": "*.yaml" },
+          { "filenamePattern": "*.json" },
+          { "filenamePattern": "*.xml" },
+          { "filenamePattern": "*.html" },
+          { "filenamePattern": "*.htm" },
+          { "filenamePattern": "*.css" },
+          { "filenamePattern": "*.js" },
+          { "filenamePattern": "*.ps1" }
         ],
         "priority": "option"
       }
@@ -30,14 +40,14 @@
     "commands": [
       {
         "command": "databricksNotebookEditor.openAsNotebook",
-        "title": "Reopen as Databricks Notebook"
+        "title": "Open as Databricks Notebook"
       }
     ],
     "menus": {
       "explorer/context": [
         {
           "command": "databricksNotebookEditor.openAsNotebook",
-          "when": "resourceExtname =~ /\\.(py|sql|ipynb)$/",
+          "when": "resourceExtname =~ /\\.(py|sql|ipynb|md|ya?ml|json|xml|html?|css|js|ps1)$/",
           "group": "navigation"
         }
       ]
