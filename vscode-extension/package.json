@@ -1,0 +1,46 @@
+{
+  "name": "databricks-notebook-editor",
+  "displayName": "Databricks Notebook Editor",
+  "description": "Cell-based editor for Databricks notebook source files (.py / .sql, plus .ipynb) - same cell parsing/editing model as the standalone web-editor, but as a native VS Code custom editor with no File System Access API / browser permission requirements.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Notebooks",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "databricksNotebookEditor.notebook",
+        "displayName": "Databricks Notebook Editor",
+        "selector": [
+          { "filenamePattern": "*.py" },
+          { "filenamePattern": "*.sql" },
+          { "filenamePattern": "*.ipynb" }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "databricksNotebookEditor.openAsNotebook",
+        "title": "Reopen as Databricks Notebook"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "databricksNotebookEditor.openAsNotebook",
+          "when": "resourceExtname =~ /\\.(py|sql|ipynb)$/",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}
