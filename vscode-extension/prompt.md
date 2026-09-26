@@ -94,7 +94,7 @@ All generated / updated files should be placed within the project folder structu
         - The cell content should provide syntax highlighting based on the selected programming language.
         - The cell content should support rich text formatting for markdown cells, including headings, lists, links, and code blocks.
         - The cell content should automatically adjust its height to fit the content, ensuring a smooth editing experience.
-        - The cell content should width should utilized the full available space, providing an optimal editing experience for the users as they write code.
+        - The cell content text input element (the code/markdown editing textarea and its syntax-highlight overlay) must utilize the full available width of the cell, stretching edge-to-edge regardless of the length of the longest line, so users always have the maximum horizontal space to write code.
         - The cell should display visual feedback for programming language on the left side in the form of colored bar.
         - The Cell should be greyed out or visually distinguished when it is marked to be skipped during execution.
     - Default-language dropdown menu

@@ -57,6 +57,13 @@ class DatabricksNotebookEditorProvider {
         postDocument();
       } else if (message.type === 'edit') {
         await this.applyFullTextEdit(document, message.text);
+      } else if (message.type === 'editAndRenameExt') {
+        // Default-language dropdown switched between SQL/Python: write the
+        // re-serialized content first, then rename the file to match, since
+        // a Databricks .py/.sql notebook's default language is inferred
+        // from its extension when reopened.
+        await this.applyFullTextEdit(document, message.text);
+        await this.renameDocumentExtension(document, webviewPanel, message.newExt);
       } else if (message.type === 'uiState') {
         // Persists cross-session UI preferences (auto-save toggle, structure
         // panel width, which sections are collapsed, etc.) keyed by file URI
@@ -77,6 +84,38 @@ class DatabricksNotebookEditorProvider {
     // are re-serialized as a full file each time.
     edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), newText);
     return vscode.workspace.applyEdit(edit);
+  }
+
+  // Renames the currently-open document's file so its extension matches the
+  // new default language (.sql <-> .py). Reopens the Databricks Notebook
+  // Editor against the renamed file and closes the current webview, since a
+  // CustomTextEditor's document/URI can't be swapped in place.
+  async renameDocumentExtension(document, webviewPanel, newExt) {
+    const oldUri = document.uri;
+    const dot = oldUri.path.lastIndexOf('.');
+    if (dot === -1) return;
+    const newPath = oldUri.path.slice(0, dot + 1) + newExt;
+    if (newPath === oldUri.path) return;
+    const newUri = oldUri.with({ path: newPath });
+
+    const exists = await vscode.workspace.fs.stat(newUri).then(() => true, () => false);
+    if (exists) {
+      vscode.window.showWarningMessage(
+        `Cannot switch default language: a file named "${newUri.path.split('/').pop()}" already exists.`
+      );
+      return;
+    }
+
+    try {
+      const edit = new vscode.WorkspaceEdit();
+      edit.renameFile(oldUri, newUri, { overwrite: false });
+      const ok = await vscode.workspace.applyEdit(edit);
+      if (!ok) return;
+      await vscode.commands.executeCommand('vscode.openWith', newUri, VIEW_TYPE, webviewPanel.viewColumn);
+      webviewPanel.dispose();
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to rename file to switch default language: ${err.message || err}`);
+    }
   }
 
   getHtmlForWebview(webview) {

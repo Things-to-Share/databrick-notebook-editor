@@ -521,11 +521,19 @@
     return lang || 'py';
   }
 
+  // Cells that were implicitly using the old default language must be given
+  // an explicit marker (so they keep behaving the same), while cells that
+  // already had an explicit marker matching the *new* default language must
+  // have that marker removed (it's now redundant/implicit) - per spec.
   function pinCellLanguagesToOldDefault(record, oldDefaultLang, newDefaultLang) {
     if (!record || !Array.isArray(record.cells) || oldDefaultLang === newDefaultLang) return;
     for (const cell of record.cells) {
       if (record.kind === 'ipynb' && cell.cell_type === 'markdown') continue;
-      if (!cell.language) cell.language = oldDefaultLang;
+      if (!cell.language) {
+        cell.language = oldDefaultLang;
+      } else if (cell.language === newDefaultLang) {
+        cell.language = '';
+      }
     }
   }
 
@@ -1404,10 +1412,44 @@
   el.defaultLangSelect.addEventListener('change', () => {
     if (!state.record) return;
     const oldDefaultLang = state.record.defaultLang;
-    state.record.defaultLang = el.defaultLangSelect.value;
-    pinCellLanguagesToOldDefault(state.record, oldDefaultLang, state.record.defaultLang);
+    const newDefaultLang = el.defaultLangSelect.value;
+    state.record.defaultLang = newDefaultLang;
+    pinCellLanguagesToOldDefault(state.record, oldDefaultLang, newDefaultLang);
+
+    // A Databricks .py/.sql notebook's default language is intrinsically tied
+    // to its file extension (Databricks - and this extension's own parser -
+    // infer it from the extension on reload), so switching between SQL and
+    // Python must rename the underlying file to match; otherwise reopening
+    // the file would silently revert the default language back to whatever
+    // the extension implies.
+    let newExt = null;
+    if (state.record.kind === 'notebook' && oldDefaultLang !== newDefaultLang &&
+        (newDefaultLang === 'sql' || newDefaultLang === 'python')) {
+      const candidateExt = newDefaultLang === 'sql' ? 'sql' : 'py';
+      if (candidateExt !== state.record.ext) newExt = candidateExt;
+    }
+    if (newExt) {
+      state.record.ext = newExt;
+      state.record.token = COMMENT_TOKEN[newExt];
+    }
+
     markChanged();
     render();
+
+    if (newExt) {
+      // Bypass the normal debounced/autosave-gated edit path: the rename
+      // must be applied against the freshly re-serialized (new comment
+      // token) content, and must happen right away regardless of the
+      // auto-save setting, otherwise the file extension and its contents
+      // would briefly disagree.
+      sendEditDebounced.cancel();
+      const text = serializeRecord(state.record);
+      state.lastSentText = text;
+      state.dirty = false;
+      state.lastSavedAt = new Date();
+      updateSaveIndicator();
+      vscodeApi.postMessage({ type: 'editAndRenameExt', text, newExt });
+    }
   });
 
   el.autoSaveCheckbox.addEventListener('change', () => {
