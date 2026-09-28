@@ -29,6 +29,9 @@ All generated / updated files should be placed within the project folder structu
     - If file is not formatted as a Databricks notebook, a warning should be displayed to the user, indicating that the file may not be fully compatible with the notebook editor.
     - The user should have the option to convert the file to Databricks notebook format.
     - The conversion process should preserve the content and structure of the original file as much as possible, ensuring a smooth transition to the Databricks notebook format. The content should be placed in the first cell of the newly converted Databricks notebook.
+    
+- Parsing of the notebook:
+    - ***Ignore*** lines between `# /// script` and `# ///`, the lines in between contain script content that should not be parsed as part of the notebook structure.
 
 - The editor should provide support for syntax highlighing based on the file type, including SQL, Python, Markdown and YAML as main languages within the Databricks environment. Utilized the visual studio code syntax highlighting capabilities for these main languages, but also css, html, js, json, xml and PowerShell, but not limited to these.
 
@@ -140,7 +143,7 @@ All generated / updated files should be placed within the project folder structu
 - Python cell should provide error messages and debugging information when code execution fails.
 - The syntax highlighting should work both with darkmode and lightmode.
 - ***Mermaid***
-    - Should there be python cell which contains `%%mermaid` followed by a Mermaid diagram, it should be properly formatted and rendered within the cell.
+    - Should there be python cell which contains `render_mermaid("""` followed by a Mermaid diagram and the closing `""")`, it should be properly formatted and rendered within the cell.
     - double-clicking the diagram should allow editing the Mermaid code directly within the cell.
 
 #### Other extentions

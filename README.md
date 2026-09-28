@@ -56,7 +56,7 @@ In addition to the standalone web app above, this repo includes a native **VS Co
 - **Syntax highlighting** for Python, Databricks/Spark SQL, Markdown, JSON, YAML, XML/HTML, CSS, JS, and PowerShell — theme-aware for both dark and light VS Code themes using native `--vscode-*` CSS variables.
 - **Markdown cells**: rendered live preview (including tables) when not being edited, editable textarea when focused.
 - **Python cell execution**: in-webview Python execution via a vendored [Pyodide](https://pyodide.org/) runtime, with a per-cell **▶ Run** button and inline output/error display. (SQL cells remain informational-only — there's no local warehouse to execute against.)
-- **Mermaid diagrams**: Python cells containing `%%mermaid` render as a live diagram using a vendored Mermaid runtime; double-click the diagram to switch back to editing its source.
+- **Mermaid diagrams**: Python cells containing a `%%mermaid` magic or a `render_mermaid("""...""")` call render as a live diagram using a vendored Mermaid runtime; double-click the diagram to switch back to editing its source.
 - **Fully offline**: Pyodide and Mermaid are vendored locally under `vscode-extension/media/libraries/`, so the extension works with no internet connection once installed.
 - **UI state persistence**: auto-save preference, collapsed sections/cells, and structure-panel width are remembered per file across close/reopen (via VS Code's `workspaceState`).
 - **Line-number gutters** on every code cell editor.

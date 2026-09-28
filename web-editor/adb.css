@@ -732,8 +732,9 @@ ul.tree { padding-left: 4px; }
 }
 .md-preview table.md-table code { background: var(--code-bg); }
 
-/* mermaid diagram preview (read-only rendered view for %%mermaid python
-   cells; double-click switches to the editable code view) */
+/* mermaid diagram preview (read-only rendered view for python cells that
+   are a %%mermaid magic or a render_mermaid("""...""") call; double-click
+   switches to the editable code view) */
 .mermaid-preview {
   padding: 12px;
   cursor: pointer;

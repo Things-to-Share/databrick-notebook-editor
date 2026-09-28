@@ -85,7 +85,8 @@ window.ADB_CONFIG = {
   // pyodide-lock.json) are resolved relative to this file's own directory.
   pyodideCdnUrl: 'libraries/pyodide/pyodide.js',
 
-  // URL used to lazily load Mermaid, for rendering `%%mermaid` diagrams
+  // URL used to lazily load Mermaid, for rendering `%%mermaid` and
+  // `render_mermaid("""...""")` diagrams
   // inside Python cells. Points at the copy vendored under
   // editor/libraries/mermaid so the app works fully offline; swap back to a
   // CDN URL (e.g. 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js')

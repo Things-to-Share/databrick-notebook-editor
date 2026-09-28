@@ -238,8 +238,9 @@ select, input[type="text"] {
    width. */
 .cell-editor-host { display: block; width: 100%; }
 
-/* mermaid diagram preview (read-only rendered view for %%mermaid python
-   cells; double-click switches to the editable code view) */
+/* mermaid diagram preview (read-only rendered view for python cells that
+   are a %%mermaid magic or a render_mermaid("""...""") call; double-click
+   switches to the editable code view) */
 .mermaid-preview {
   padding: 12px;
   cursor: pointer;

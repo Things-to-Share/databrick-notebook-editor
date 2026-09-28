@@ -170,14 +170,37 @@
     return firstLine === `${token} Databricks notebook source`;
   }
 
+  // Optional PEP 723 "inline script metadata" block (e.g. Databricks'
+  // `# /// script` / `# [tool.databricks.environment]` / `# ///` fence used to
+  // record the notebook's environment version). It always sits right after the
+  // header line, before the first real cell, and is UI-managed metadata rather
+  // than editable cell content - so it is extracted verbatim here and kept out
+  // of cell 1, then re-injected unchanged by serializeDatabricksNotebook.
+  function extractEnvBlock(lines, token) {
+    const startRe = new RegExp(`^${escapeRegex(token)} /// \\S+$`);
+    if (!lines.length || !startRe.test(lines[0].trim())) return { envBlock: null, rest: lines };
+    const endRe = new RegExp(`^${escapeRegex(token)} ///$`);
+    let end = -1;
+    for (let i = 1; i < lines.length; i++) {
+      if (endRe.test(lines[i].trim())) { end = i; break; }
+    }
+    if (end === -1) return { envBlock: null, rest: lines };
+    const envBlock = lines.slice(0, end + 1).join('\n');
+    const rest = lines.slice(end + 1);
+    if (rest.length && rest[0].trim() === '') rest.shift();
+    return { envBlock, rest };
+  }
+
   function parseDatabricksNotebook(content, token) {
     const lines = content.split(/\r?\n/);
     lines.shift(); // header line
     if (lines.length && lines[0].trim() === '') lines.shift();
 
+    const { envBlock, rest } = extractEnvBlock(lines, token);
+
     const cmdRe = new RegExp(`^${escapeRegex(token)} COMMAND -+$`);
     const blocks = [[]];
-    for (const line of lines) {
+    for (const line of rest) {
       if (cmdRe.test(line.trim())) {
         blocks.push([]);
       } else {
@@ -185,12 +208,13 @@
       }
     }
 
-    return blocks.map((blockLines) => {
+    const cells = blocks.map((blockLines) => {
       // trim leading/trailing blank lines
       while (blockLines.length && blockLines[0].trim() === '') blockLines.shift();
       while (blockLines.length && blockLines[blockLines.length - 1].trim() === '') blockLines.pop();
       return parseCellBlock(blockLines, token);
     });
+    return { cells, envBlock };
   }
 
   function unquoteTitle(s) {
@@ -286,10 +310,11 @@
     return body;
   }
 
-  function serializeDatabricksNotebook(cells, token, defaultLang) {
+  function serializeDatabricksNotebook(cells, token, defaultLang, envBlock) {
     const sep = `\n\n${token} COMMAND ----------\n\n`;
     const body = cells.map((c) => serializeCellBlock(c, token, defaultLang)).join(sep);
-    return `${token} Databricks notebook source\n\n${body}\n`;
+    const envPart = envBlock ? `${envBlock}\n\n` : '';
+    return `${token} Databricks notebook source\n\n${envPart}${body}\n`;
   }
 
   // ---------------------------------------------------------------------
@@ -640,17 +665,37 @@
     return html || '<p class="md-empty">(empty markdown cell)</p>';
   }
 
-  // A python cell whose first non-empty line is the `%%mermaid` marker is
-  // rendered as a Mermaid diagram instead of a plain code editor.
+  // A python cell is rendered as a Mermaid diagram instead of a plain code
+  // editor when its content is either:
+  //  - a `%%mermaid` IPython cell-magic marker as the first line (requires
+  //    `%load_ext mermaid_magic` elsewhere in the notebook), or
+  //  - a whole-cell call to a `render_mermaid("""<diagram>""")` helper (the
+  //    convention used by notebooks that define their own render_mermaid()
+  //    wrapper around get_ipython().run_cell_magic("mermaid", ...) instead
+  //    of loading the magic directly).
+  const MERMAID_CALL_RE = /^render_mermaid\(\s*"""([\s\S]*?)"""\s*\)\s*$/;
+
   function isMermaidCell(source) {
-    const firstLine = (source || '').split(/\r?\n/, 1)[0].trim();
-    return /^%%mermaid$/i.test(firstLine);
+    const trimmed = (source || '').trim();
+    const firstLine = trimmed.split(/\r?\n/, 1)[0].trim();
+    if (/^%%mermaid$/i.test(firstLine)) return true;
+    return MERMAID_CALL_RE.test(trimmed);
   }
 
+  // Extracts just the diagram source to pass to mermaid.render(): strips the
+  // `%%mermaid` marker line, or unwraps a render_mermaid("""...""") call.
   function stripMermaidMarker(source) {
-    const lines = (source || '').split(/\r?\n/);
-    if (/^%%mermaid$/i.test((lines[0] || '').trim())) lines.shift();
-    return lines.join('\n');
+    const raw = source || '';
+    const trimmed = raw.trim();
+    const callMatch = MERMAID_CALL_RE.exec(trimmed);
+    if (callMatch) return callMatch[1].replace(/^\r?\n/, '').replace(/\r?\n[ \t]*$/, '');
+    const lines = raw.split(/\r?\n/);
+    let i = 0;
+    while (i < lines.length && lines[i].trim() === '') i++;
+    if (i < lines.length && /^%%mermaid$/i.test(lines[i].trim())) {
+      return lines.slice(i + 1).join('\n').trim();
+    }
+    return raw;
   }
 
   // Resolve the effective language of a cell: an explicit per-cell language
@@ -1470,7 +1515,7 @@
     let text;
     if (openRecord) {
       if (openRecord.kind !== 'notebook') return;
-      text = serializeDatabricksNotebook(openRecord.cells, openRecord.token, openRecord.defaultLang);
+      text = serializeDatabricksNotebook(openRecord.cells, openRecord.token, openRecord.defaultLang, openRecord.envBlock);
     } else {
       text = await (await fileHandle.getFile()).text();
     }
@@ -1498,7 +1543,9 @@
     if (!changed) return;
     const newText = lines.join('\n');
     if (openRecord) {
-      openRecord.cells = parseDatabricksNotebook(newText, token);
+      const parsed = parseDatabricksNotebook(newText, token);
+      openRecord.cells = parsed.cells;
+      openRecord.envBlock = parsed.envBlock;
       markDirty(openRecord);
     } else {
       const writable = await fileHandle.createWritable();
@@ -1722,7 +1769,7 @@
     if (await entryExists(record.parentHandle, newFileName)) { setStatus(`"${newFileName}" already exists in this folder`, true); return; }
     try {
       let text;
-      if (record.kind === 'notebook') text = serializeDatabricksNotebook(record.cells, record.token, record.defaultLang);
+      if (record.kind === 'notebook') text = serializeDatabricksNotebook(record.cells, record.token, record.defaultLang, record.envBlock);
       else if (record.kind === 'ipynb') text = serializeIpynb(record.raw, record.cells, record.defaultLang);
       else text = record.content;
 
@@ -1785,8 +1832,8 @@
       const token = COMMENT_TOKEN[ext];
       const defaultLang = ext === 'py' ? 'python' : ext === 'r' ? 'r' : ext;
       if (isDatabricksSource(content, token)) {
-        const cells = parseDatabricksNotebook(content, token);
-        record = { handle: fileHandle, parentHandle, path, ext, kind: 'notebook', token, cells, defaultLang };
+        const { cells, envBlock } = parseDatabricksNotebook(content, token);
+        record = { handle: fileHandle, parentHandle, path, ext, kind: 'notebook', token, cells, envBlock, defaultLang };
       } else {
         record = { handle: fileHandle, parentHandle, path, ext, kind: 'plain', content, defaultLang };
       }
@@ -2695,7 +2742,7 @@
     if (!record.dirty) return;
     try {
       let text;
-      if (record.kind === 'notebook') text = serializeDatabricksNotebook(record.cells, record.token, record.defaultLang);
+      if (record.kind === 'notebook') text = serializeDatabricksNotebook(record.cells, record.token, record.defaultLang, record.envBlock);
       else if (record.kind === 'ipynb') text = serializeIpynb(record.raw, record.cells, record.defaultLang);
       else text = record.content;
 
