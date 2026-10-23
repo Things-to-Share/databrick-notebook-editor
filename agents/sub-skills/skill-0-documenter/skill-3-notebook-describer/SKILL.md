@@ -45,6 +45,7 @@ ONLY include information that is relevant to understanding the context and purpo
 - Only notebook context from `## Initialization` and `## Code` may be used as source context; the generated `## Documentation` content itself must not be used as context input.
 - Only documentation markdown (`%md`) cells may be created or updated; code cells must remain unchanged.
 - Exception: spelling corrections in existing code comments are allowed.
+- Exception for Mermaid support: when Mermaid is triggered under `### Diagram`, Python support cells are allowed to be created or updated to keep diagram rendering functional. Allowed titles are exactly: `install mermaid_magic extension`, `load mermaid_magic extension`, `render_mermaid`, `Structure of the Notebook`, and optional `Datamodel`.
 - Ensure `## Documentation` exists directly after the notebook title; create it if missing.
 - If `## Initialization` or `## Code` section headers are missing, stop and ask the developer to add the missing header and provide its start cell number before continuing, abort if NO input is provided after 10 minutes.
 - `### AI Prompt utilized`, `### Introduction`, and `### Hierarchical Structure of the Notebook` must each be exactly one markdown cell containing both header and body text (exactly 3 cells in total for these sections).
@@ -54,6 +55,7 @@ ONLY include information that is relevant to understanding the context and purpo
 - `### Introduction` must be concise and capped at 300 words (or 30% of total documentation).
 - `### Hierarchical Structure of the Notebook` must be capped at 700 words (or 70% of total documentation) and must mention that Python and SQL are used.
 - Mermaid diagram cells are optional and must only be added when their trigger conditions are met.
+- When Mermaid is triggered, Mermaid support cells are mandatory and must be reconciled idempotently: create missing cells, update existing cells, and avoid duplicates.
 - If a Structure diagram is added, use a flowchart that reflects the hierarchical-structure narrative, with logical grouping and no empty lines between Mermaid objects.
 - If a Datamodel diagram is added, include only persisted schema tables/views and only PK/FK fields; use dotted lines for many-to-many bridge relationships.
 - When diagrams are present, apply the prescribed classification color palette consistently so readability works in both light and dark mode.
@@ -135,7 +137,11 @@ ONLY include information that is relevant to understanding the context and purpo
 
         - when utilizing the colors they should work well in both light and dark mode.
 
-  - If the mermaid is triggered, the structure of cells is as follows:
+  - If the mermaid is triggered, the structure of cells is as follows, if any of these cell are missing, they should be added:
+        - Required behavior when triggered:
+                - enforce this exact order directly under `### Diagram`: `install mermaid_magic extension` -> `load mermaid_magic extension` -> `render_mermaid` -> `Structure of the Notebook` -> optional `Datamodel`
+                - keep exactly one cell per required title; if duplicates exist, keep one canonical cell and remove duplicates
+                - `Structure of the Notebook` and optional `Datamodel` must call `render_mermaid(...)`; direct `get_ipython().run_cell_magic(...)` in those cells is not allowed
     - `### Diagram` (this is only a header, NO text needed)
         - cell
             - title : `install mermaid_magic extension`
@@ -172,11 +178,8 @@ ONLY include information that is relevant to understanding the context and purpo
 
                 ```python
                 def render_mermaid(diagram: str):
-                    try: get_ipython().run_cell_magic("mermaid", "", """
-                    flowchart TD
-                        A[Start] --> B[Process]
-                        B --> C[End]
-                    """)
+                    try:
+                        get_ipython().run_cell_magic("mermaid", "", diagram)
                     except:
                         print("!!! failed to render mermaid diagram !!!")
                 ```
@@ -397,6 +400,8 @@ ONLY include information that is relevant to understanding the context and purpo
 - Ensure that all logical steps of the notebook are correctly documented and that the schema definitions and metadata are properly applied.
 - Verify that the `Definition : <name-of-the-schema>` and `Metadata : <name-of-the-schema>` cells exist and are correctly formatted.
 - Confirm that the schema name and metadata comments accurately reflect the functional purpose and description of the schema.
+- If Mermaid is triggered, verify that all Mermaid initialization cells are present in the required order and that missing cells were added or outdated cells were updated.
+- Verify `render_mermaid` exists exactly once and that `Structure of the Notebook` and optional `Datamodel` call `render_mermaid(...)`.
 
 ## Feedback
 

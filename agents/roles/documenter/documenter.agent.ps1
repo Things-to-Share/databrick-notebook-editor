@@ -29,6 +29,47 @@ function Invoke-VSCodeReload {
 	}
 }
 
+function Get-MarkdownFileReferences {
+	param(
+		[string[]]$MarkdownLines
+	)
+
+	$references = New-Object System.Collections.Generic.List[string]
+	$linkRegex = [regex]'\[[^\]]+\]\(([^)]+)\)'
+
+	foreach ($line in $MarkdownLines) {
+		$matches = $linkRegex.Matches($line)
+		foreach ($match in $matches) {
+			$linkTarget = $match.Groups[1].Value.Trim()
+
+			if ([string]::IsNullOrWhiteSpace($linkTarget)) {
+				continue
+			}
+
+			# Skip external and anchor-only links.
+			if ($linkTarget -match '^(https?:|mailto:|#)') {
+				continue
+			}
+
+			# Remove optional markdown title part: path/to/file.md "Title".
+			$linkTarget = $linkTarget -replace '\s+"[^"]*"\s*$', ''
+
+			# Remove optional fragment or query from local file links.
+			$linkTarget = ($linkTarget -split '#', 2)[0]
+			$linkTarget = ($linkTarget -split '\?', 2)[0]
+
+			# Normalize path style for downstream path math.
+			$linkTarget = $linkTarget -replace '\\', '/'
+
+			if (-not [string]::IsNullOrWhiteSpace($linkTarget) -and -not $references.Contains($linkTarget)) {
+				$references.Add($linkTarget)
+			}
+		}
+	}
+
+	return $references.ToArray()
+}
+
 # Get the Windows Username
 $WindowsUsername = [System.Environment]::UserName
 $TargetRoot = "C:\Users\$WindowsUsername\AppData\Roaming\Code\User\prompts\"
@@ -45,12 +86,16 @@ $agentFile = Get-Content -Path $agentMdPath
 $agentNameLine = $agentFile | Where-Object { $_ -match "^name:" }
 $agentName = $agentNameLine -replace "^name:\s*""", "" -replace """", ""
 
+# clean up existing agent folder if it exists
+if (Test-Path -LiteralPath $TargetAgentPath) {
+	Remove-Item -LiteralPath $TargetAgentPath -Recurse -Force
+}
+
 # create folder with name of agent in target deployment path.
 $TargetAgentPath = Join-Path $TargetRoot $agentName
 if (-not (Test-Path -LiteralPath $TargetAgentPath)) {
 	New-Item -ItemType Directory -Path $TargetAgentPath -Force | Out-Null
 }
-
 
 # copy the agent file to $TargetRoot
 $targetAgentMdPath = Join-Path $TargetRoot (Split-Path -Leaf $agentMdPath)
@@ -64,15 +109,9 @@ Write-Host "Agent name: $agentName" -ForegroundColor Yellow
 Write-Host "Agent MD path: $agentMdPath" -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor Yellow
 
-# Determine list of files and folders mentioned in the agent.md context for deployment. Based on the content of agent.md, extract the relevant files and folders that need to be copied to the target deployment path. Copy all the files to the $TargetRoot while maintaining the folder structure.
-$agentFiles = @()
-
-foreach ($line in $agentFile) {
-	if ($line -match "^- \[") {
-		$filePath = $line -replace "^- \[.*\]\((.*)\)", '$1'
-		$agentFiles += $filePath
-	}
-}
+# Determine list of files referenced in *.agent.md markdown links.
+$agentFiles = Get-MarkdownFileReferences -MarkdownLines $agentFile
+Write-Host "Detected $($agentFiles.Count) local markdown file reference(s)." -ForegroundColor Yellow
 
 # determine the full paths of the files and folders to be copied
 $list_source_ref_files = @()
@@ -97,9 +136,8 @@ foreach ($file in $agentFiles) {
 	
 	$source_ref_file = Join-Path $FileSourcePath $relativePath
 	$target_ref_file = Join-Path $TargetRoot $relativePath
-	#Write-Host "Source full path: $source_ref_file" -ForegroundColor Yellow
+	Write-Host "Source full path: $source_ref_file" -ForegroundColor Yellow
 	#Write-Host "Target full path: $target_ref_file" -ForegroundColor Yellow
-
 	
 	$list_source_ref_files += $source_ref_file
 	$list_target_ref_files += $target_ref_file
