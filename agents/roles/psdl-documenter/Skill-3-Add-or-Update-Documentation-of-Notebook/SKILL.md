@@ -1,18 +1,14 @@
 ---
-name: "skill-3-notebook-describer"
-description: "Describes a Databricks notebook, providing functional names and descriptions for the notebook itself, based on its content and purpose within Unity Catalog."
-tools: [read, edit]
+name: "psdl-add-or-update-documentation-notebook"
+description: Add or update the documentation section of a Databricks notebook with a structured functional description, including an introduction, hierarchical structure overview, and optional mermaid diagrams, targeted at junior-to-medior data engineers.
 ---
-
-
-# Skill: Notebook Describer
-
-***Behavior***: see [behavior](../behavior.md)
-***Audience***: see [audience](../audience.md)
-
 ## Goal
 
-The goal of this prompt is to produce a `## Documentation` section for the ***specified_notebook***-notebook, that provides a clear, function-focused description of the notebook. This description should give a compact overview of the notebook’s purpose, key features, and logical structure so that a new user can quickly understand what the notebook does and how it is organized.
+The goal of this prompt is to provide a documentation section that includes a detailedfunctional description of a ***specified_notebook*** notebook. The functional description is intended to give a compact overview of the notebook's purpose and functionality, with emphasis on its key features and logical structure, so that if a new user is assigned to the notebook, they can quickly understand its purpose and functionality.
+
+## Audience
+
+The audience for this documentation is primarily other data engineers with the experience level between junior and medior, with experience in T-SQL and SAP Hana SQL. Less experienced in Python, basic level of understanding of Databricks and Spark. The documentation should be written in a way that is accessible to this audience, with clear explanations of the notebook's purpose and functionality.
 
 ## Context Setting
 
@@ -25,9 +21,11 @@ ONLY include information that is relevant to understanding the context and purpo
         - `### AI Prompt utilized`
         - `### Introduction`
         - `### Hierarchical Structure of the Notebook`
+        - `### Dependencies`
         - `### Diagrams` <-- this is Optional
             - `#### Notebook Flow` <-- this is Optional
             - `#### Datamodel` <-- this is Optional
+            - `#### Job Flow` <-- this is Optional
     
     - `## Initialization`
         - structure and setup is up to developer and SHOULD NOT be touched by the documentation process. However if this section header is missing, prompt developer to add it! and Stop the documentation process until it is added.
@@ -39,36 +37,21 @@ ONLY include information that is relevant to understanding the context and purpo
 
 > **Cell count expectation:** `### AI Prompt utilized`, `### Introduction`, and `### Hierarchical Structure of the Notebook` together must result in exactly 3 markdown cells (one cell per section, header + text combined) — plus the optional `### Diagram` cells if triggered. Never split a section's header into its own cell.
 
-## Constraints
-
-- Output language must be English.
-- Only notebook context from `## Initialization` and `## Code` may be used as source context; the generated `## Documentation` content itself must not be used as context input.
-- Only documentation markdown (`%md`) cells may be created or updated; code cells must remain unchanged.
-- Exception: spelling corrections in existing code comments are allowed.
-- Exception for Mermaid support: when Mermaid is triggered under `### Diagram`, Python support cells are allowed to be created or updated to keep diagram rendering functional. Allowed titles are exactly: `install mermaid_magic extension`, `load mermaid_magic extension`, `render_mermaid`, `Structure of the Notebook`, and optional `Datamodel`.
-- Ensure `## Documentation` exists directly after the notebook title; create it if missing.
-- If `## Initialization` or `## Code` section headers are missing, stop and ask the developer to add the missing header and provide its start cell number before continuing, abort if NO input is provided after 10 minutes.
-- `### AI Prompt utilized`, `### Introduction`, and `### Hierarchical Structure of the Notebook` must each be exactly one markdown cell containing both header and body text (exactly 3 cells in total for these sections).
-- Do not split a documentation section into a header-only cell and a separate body cell.
-- `### Diagram` is the only header allowed to be standalone (without body text) because it is followed by Python/Mermaid cells.
-- Total documentation length must not exceed 1000 words.
-- `### Introduction` must be concise and capped at 300 words (or 30% of total documentation).
-- `### Hierarchical Structure of the Notebook` must be capped at 700 words (or 70% of total documentation) and must mention that Python and SQL are used.
-- Mermaid diagram cells are optional and must only be added when their trigger conditions are met.
-- When Mermaid is triggered, Mermaid support cells are mandatory and must be reconciled idempotently: create missing cells, update existing cells, and avoid duplicates.
-- If a Structure diagram is added, use a flowchart that reflects the hierarchical-structure narrative, with logical grouping and no empty lines between Mermaid objects.
-- If a Datamodel diagram is added, include only persisted schema tables/views and only PK/FK fields; use dotted lines for many-to-many bridge relationships.
-- When diagrams are present, apply the prescribed classification color palette consistently so readability works in both light and dark mode.
-
-
 ## Instructions
 
-- Should you encounter `## Initialisation` instead of `## Initialization`, treat it as equivalent and proceed accordingly.
-- Treat `## Constraints` as the authoritative rule set for validation and formatting.
-- Follow the notebook flow in this order: inspect source context, ensure required structure is present, then create or update documentation sections.
-- Use `## Details per documentation section` as the content blueprint for each subsection.
-- Keep edits limited to the minimum required to make documentation complete, consistent, and compliant.
-- Preserve existing wording when it is already correct; rewrite only when clarity, completeness, or compliance requires it.
+### Documentation Overarching Guidelines
+
+- Documentation must be in English-language
+- All the documentation sections should always be created or updated if needed
+- and should be written in a clear and concise manner
+- avoiding excessive technical jargon or unnecessary complexity.
+- Totally, the documentation should be no more than 1000 words, and should focus on the key features and functionality of the notebook.
+- All Initialization and coding cells should be left untouched, and only the documentation cells (markdown; %md) should be added or updated.
+- Cells that are markdown (i.e., `%md`) DO NOT get a title!
+- Expected cell structure for this documentation section of the notebook: 
+- First, ensure that the `## Documentation` section exists in the notebook. this must directly after the notebook title markdown header. If it does not, create it before proceeding with the documentation process.
+- Every section should have a ***header*** + text, sub-sections get their OWN cell. EXCEPTIONs are the `## Documentation`, `## Initialization`and `## Code` sections, these are part of the overall notebook structure.
+- The ***header*** and its accompanying text MUST be placed together in the SAME markdown (`%md`) cell — do NOT split a section into a header-only cell followed by a separate `# COMMAND ----------` cell that contains only the body text. The only header that is allowed to stand alone without text in its own cell is `### Diagram` (see below), since it is immediately followed by python/mermaid code cells rather than body text.
 
 ## Details per documentation section
 
@@ -114,10 +97,27 @@ ONLY include information that is relevant to understanding the context and purpo
 
         ```
 
+- `### Dependencies` — 1 single `%md` cell containing the header and text together
+  - Discovery (read-only, NEVER modify yaml files, NEVER run bundle CLI commands):
+    1. Determine the bundle root: walk up from the folder of the notebook until a folder containing `databricks.yml` is found (the `src`- and `resources`-folder are at the same level as `databricks.yml`).
+    2. Read `databricks.yml`; use its `include:` paths (e.g. `resources/*.yml`) to determine which resource files to read. If `include:` is absent, read all `*.yml` files in the `resources`-folder.
+    3. In every resource file, search `resources.jobs.*.tasks` (including nested `for_each_task.task`) for a `notebook_task.notebook_path` that resolves to the documented notebook. Resolve paths relative to the folder of the yaml file and ignore the file extension (`.py`, `.sql`, `.ipynb`).
+    4. Resolve `${var.<name>}` using the `variables:` section (and the default target in `databricks.yml`); if it is a `lookup`, show the lookup name (e.g. cluster `psdl-small-18-lts`).
+  - Content to document per job that references the notebook:
+    - Job name, schedule (`quartz_cron_expression` + `timezone_id`) in plain English, and the task key of the notebook.
+    - Upstream dependencies: the tasks in `depends_on` and the notebooks they run, recursively up to the first task.
+    - Downstream dependencies: tasks that list this task in their `depends_on`.
+    - Parameters: map `base_parameters` to the notebook widgets (e.g. `table_local`), and explain dynamic values: `{{input.<x>}}` comes from `for_each_task.inputs`, `{{tasks.<task>.values.<key>}}` is a task value set by an upstream notebook (name that notebook and, if found in its code, the `dbutils.jobs.taskValues.set` call).
+    - Execution: `for_each_task` concurrency, compute (`existing_cluster_id` / job cluster / serverless), queueing.
+  - Present the dependencies as a markdown table: | Job | Task | Upstream | Downstream | Parameters |
+  - If no job references the notebook, state that the notebook is not orchestrated by the bundle and is run manually or as a helper.
+  - max 200 words; reduce the `### Hierarchical Structure of the Notebook` budget to 500 words so the total stays within 1000 words.        
+
 - `### Diagrams` ***Optional mermaid diagram:***
     - **Trigger for *Mermaid Diagram*** 
         - **Trigger for *Structure of the Notebook*** : If the notebook is complex and has more than *3 multiple logical blocks*, provide a mermaid flow diagram to illustrate the structure of the notebook.
         - **Trigger for *Datamodel*** : If more then 6 table/views are defined and the the relationsship between these table/view are captured in primary and foreign keys, provide a mermaid diagram to illustrate the datamodel.
+        - **Trigger for *Job Flow*** : If the `### Dependencies` discovery found a job in the bundle `resources`-folder that references the notebook, AND that job has more than 3 tasks (count nested `for_each_task.task` as part of its parent task), provide a mermaid flow diagram of the job tasks, highlighting the documented notebook.
         - The trigger are independent, meaning that the presence of one does not necessitate the presence of the other.
         - If neither trigger condition is met, the mermaid diagram section can be omitted.
 
@@ -138,11 +138,7 @@ ONLY include information that is relevant to understanding the context and purpo
 
         - when utilizing the colors they should work well in both light and dark mode.
 
-  - If the mermaid is triggered, the structure of cells is as follows, if any of these cell are missing, they should be added:
-        - Required behavior when triggered:
-                - enforce this exact order directly under `### Diagram`: `install mermaid_magic extension` -> `load mermaid_magic extension` -> `render_mermaid` -> `Structure of the Notebook` -> optional `Datamodel`
-                - keep exactly one cell per required title; if duplicates exist, keep one canonical cell and remove duplicates
-                - `Structure of the Notebook` and optional `Datamodel` must call `render_mermaid(...)`; direct `get_ipython().run_cell_magic(...)` in those cells is not allowed
+  - If the mermaid is triggered, the structure of cells is as follows:
     - `### Diagram` (this is only a header, NO text needed)
         - cell
             - title : `install mermaid_magic extension`
@@ -179,8 +175,11 @@ ONLY include information that is relevant to understanding the context and purpo
 
                 ```python
                 def render_mermaid(diagram: str):
-                    try:
-                        get_ipython().run_cell_magic("mermaid", "", diagram)
+                    try: get_ipython().run_cell_magic("mermaid", "", """
+                    flowchart TD
+                        A[Start] --> B[Process]
+                        B --> C[End]
+                    """)
                     except:
                         print("!!! failed to render mermaid diagram !!!")
                 ```
@@ -384,6 +383,62 @@ ONLY include information that is relevant to understanding the context and purpo
                         classDef bdg fill:#F0F0F0,stroke:#333,stroke-width:1px
                     """)
                     ```
+        - cell
+            - if `Job Flow` is triggered
+                - title : `Job Flow`
+                - content : here the actual job FlowDiagram mermaid is created
+                    - It should reflect the content of the `### Dependencies` section; it MUST be derived only from the resource yaml files read during the `### Dependencies` discovery (read-only, NEVER run bundle CLI commands).
+                    - One diagram per job that references the notebook; if more than one job is found, put one `render_mermaid` call per job in the same cell.
+                    - Start with one node for the trigger: the schedule in plain English (from `quartz_cron_expression` + `timezone_id`), or `Manual / triggered externally` if no schedule is defined.
+                    - One node per task: `<task_key><br><notebook name>`; the notebook name is the file name of `notebook_path` without folder and extension.
+                    - Draw edges from every `depends_on` entry to the task; add the `run_if` value as edge label when it is not `ALL_SUCCESS`.
+                    - A `for_each_task` is drawn as a subgraph named `<task_key> (for each, concurrency <n>)`, holding the nested task node; label the edge into the subgraph with the input source (e.g. `tasks.preparation.values.facts`).
+                    - A `condition_task` is drawn as a diamond `{ }` with its `true` / `false` outgoing edges labelled.
+                    - Pipeline, SQL or other non-notebook tasks are drawn as a node with the task type in the label (e.g. `pipeline_task`).
+                    - Color coding (reuse the classification colors table above):
+                        | ***Role in the job*** | ***Classification color*** | ***Fill*** | ***Border*** | ***Font*** |
+                        |:---                       |:---                     |:---      |:---      |:--- |
+                        | Trigger / schedule        | Initialization          | #858688  | #505052  | #FFFFFF |
+                        | Upstream task             | Helper Functions        | #5b7fa6  | #374c64  | #FFFFFF |
+                        | Documented notebook       | Processing Group 4      | #e65100  | #8a3100  | #FFFFFF |
+                        | Downstream task           | DDL Schema, Tables & Views | #3d7a3d | #254925 | #FFFFFF |
+                        | Unrelated / parallel task | Clean up                | #cab8b8  | #796e6e  | #000000 |
+                    - The documented notebook node gets `stroke-width:4px` so it stands out in both light and dark mode.
+                    - When generating the mermaid diagram DO NOT USE empty lines to separate objects in the diagram!
+                    - Keep the diagram readable: max 15 nodes; if the job is larger, collapse tasks that are neither upstream nor downstream of the documented notebook into a single node `other tasks (<n>)`.
+                - example :
+
+                    ```python
+                    render_mermaid("""
+                    flowchart LR
+                        TRG([Schedule:<br>weekdays 12:00<br>Europe/Amsterdam])
+                        PREP[preparation<br>01_preparation]
+                        subgraph DIMS["dimensions (for each, concurrency 5)"]
+                            DIM[dimension<br>02_dimensions]
+                        end
+                        subgraph FACTS["facts (for each, concurrency 5)"]
+                            FCT[fact<br>03_facts]
+                        end
+                        subgraph BRDS["bridges (for each, concurrency 5)"]
+                            BRD[bridge<br>04_bridges]
+                        end
+                        CLN[cleanup<br>09_cleanup]
+                        TRG --> PREP
+                        PREP -- "tasks.preparation.values.dimensions" --> DIMS
+                        DIMS -- "tasks.preparation.values.facts" --> FACTS
+                        FACTS -- "tasks.preparation.values.bridges" --> BRDS
+                        BRDS --> CLN
+                        style TRG fill:#858688,stroke:#505052,color:#FFFFFF
+                        style PREP fill:#5b7fa6,stroke:#374c64,color:#FFFFFF
+                        style DIMS fill:#5b7fa6,stroke:#374c64,color:#FFFFFF
+                        style DIM fill:#5b7fa6,stroke:#374c64,color:#FFFFFF
+                        style FACTS fill:#e65100,stroke:#8a3100,color:#FFFFFF,stroke-width:4px
+                        style FCT fill:#e65100,stroke:#8a3100,color:#FFFFFF,stroke-width:4px
+                        style BRDS fill:#3d7a3d,stroke:#254925,color:#FFFFFF
+                        style BRD fill:#3d7a3d,stroke:#254925,color:#FFFFFF
+                        style CLN fill:#3d7a3d,stroke:#254925,color:#FFFFFF
+                    """)
+                    ```
 
 - `## Initialization`
     - All coding cells should be left untouched, and only the documentation cells (markdown; %md) should be added or updated.
@@ -394,4 +449,3 @@ ONLY include information that is relevant to understanding the context and purpo
     - All coding cells should be left untouched, and only the documentation cells (markdown; %md) should be added or updated.
     - cells with code should not be modified, and the code should be left as is.
     - Exception: Spelling in in comments is allowed to be corrected.
-

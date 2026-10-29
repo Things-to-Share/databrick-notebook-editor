@@ -78,7 +78,7 @@ $TargetRoot = "C:\Users\$WindowsUsername\AppData\Roaming\Code\User\prompts\"
 Write-Host "Target deployment path: $TargetRoot" -ForegroundColor Yellow
 
 # Detertime name of the *.agent.md, based on file content, for the variable named name, open the file search for "name:" the string that follows is the agent name.
-$agentMdPath = Get-ChildItem -Path $PSScriptRoot -Filter "*.agent.md" -File | Select-Object -First 1 -ExpandProperty FullName
+$agentMdPath = Get-ChildItem -Path $PSScriptRoot -Filter "SKILL.md" -File | Select-Object -First 1 -ExpandProperty FullName
 if (-not $agentMdPath) {
 	throw "No *.agent.md file found in $PSScriptRoot"
 }
@@ -86,32 +86,35 @@ $agentFile = Get-Content -Path $agentMdPath
 $agentNameLine = $agentFile | Where-Object { $_ -match "^name:" }
 $agentName = $agentNameLine -replace "^name:\s*""", "" -replace """", ""
 
+# Determine the target path and agent file within the target deployment path
+$TargetAgentPath = Join-Path $TargetRoot $agentName
+$TargetAgentFile = Join-Path $TargetRoot ($agentName + ".agent.md")
+
 # clean up existing agent folder if it exists
 if (Test-Path -LiteralPath $TargetAgentPath) {
 	Write-Host "Removing existing agent folder: $TargetAgentPath" -ForegroundColor Yellow
 	Remove-Item -LiteralPath $TargetAgentPath -Recurse -Force
 }
 
-# create folder with name of agent in target deployment path.
-$TargetAgentPath = Join-Path $TargetRoot $agentName
+# Create the agent folder if it does not exist
 if (-not (Test-Path -LiteralPath $TargetAgentPath)) {
 	Write-Host "Creating new agent folder: $TargetAgentPath" -ForegroundColor Yellow
 	New-Item -ItemType Directory -Path $TargetAgentPath -Force | Out-Null
 }
 
+Write-Host "----------------------------------------" -ForegroundColor Yellow
+Write-Host "Agent name: $agentName" -ForegroundColor Yellow
+Write-Host "Agent MD path: $agentMdPath" -ForegroundColor Yellow
+Write-Host "Target agent file: $TargetAgentFile" -ForegroundColor Yellow
+Write-Host "----------------------------------------" -ForegroundColor Yellow
+
 # copy the agent file to $TargetRoot
-$targetAgentMdPath = Join-Path $TargetRoot (Split-Path -Leaf $agentMdPath)
-Copy-Item -LiteralPath $agentMdPath -Destination $targetAgentMdPath -Force
+Copy-Item -LiteralPath $agentMdPath -Destination $TargetAgentFile -Force
 
 # Set the target deployment path to include the agent folder
 $TargetRoot = $TargetAgentPath
 
-Write-Host "----------------------------------------" -ForegroundColor Yellow
-Write-Host "Agent name: $agentName" -ForegroundColor Yellow
-Write-Host "Agent MD path: $agentMdPath" -ForegroundColor Yellow
-Write-Host "----------------------------------------" -ForegroundColor Yellow
-
-# Determine list of files referenced in *.agent.md markdown links.
+# Get the list of markdown file references from the agent file
 $agentFiles = Get-MarkdownFileReferences -MarkdownLines $agentFile
 Write-Host "Detected $($agentFiles.Count) local markdown file reference(s)." -ForegroundColor Yellow
 
@@ -165,10 +168,10 @@ foreach ($i in 0..($list_source_ref_files.Count - 1)) {
 # Update file content of *.agent.md with
 # Add "./$agentName/" to all the filepaths 
 # then remove all "../" from the file paths
-$agentMdContent = Get-Content -LiteralPath $targetAgentMdPath
+$agentMdContent = Get-Content -LiteralPath $TargetAgentFile
 $updatedContent = $agentMdContent -replace "\]\((?!\./)", "](./$agentName/"
 $updatedContent = $updatedContent -replace "\.\./", ""
-Set-Content -LiteralPath $targetAgentMdPath -Value $updatedContent
+Set-Content -LiteralPath $TargetAgentFile -Value $updatedContent
 
 Write-Host ""
 Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Yellow

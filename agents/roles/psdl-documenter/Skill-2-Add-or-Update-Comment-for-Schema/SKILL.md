@@ -1,25 +1,25 @@
 ---
-name: "skill-2-schema-describer"
-description: "Describes the schema within Unity Catalog, providing functional names and descriptions for the schema, based on the content and purpose of the dataset utilized in the notebook within."
-tools: [read, edit]
+name: "psdl-add-or-update-comment-schema"
+description: Add or update the Unity Catalog comment for a specific schema, providing a functional name and description that summarizes the schema's purpose and content.
+tools: [read, edit, search]
 ---
-
-# Skill: Schema Describer 
-
-***Behavior***: see [behavior](../behavior.md)
-***Audience***: see [audience](../audience.md)
-
 ## Goal
 
-To put functional name and descriptions in Unity Catalog, for a schema utilized in ***specific***-notebook, briefly describing its purpose and content of the schema, based on the related datasets, volumes, and their usage within the notebook.
+To put functional descriptions in Unity Catalog, for a ***specific*** schema, briefly describing its purpose and content of the dataset within the schema.
+
+## Audience
+
+The intended audience for this functional description includes data engineers, data analysts, and other stakeholders who need to understand the purpose and content of the schema within Unity Catalog.
 
 ## Instructions
 
-- Analyse the Notebook and formulate a functional name for the schema and a functional description. 
+Apply Unity Catalog documentation for the specified schema by following the rules and guidelines outlined below.
+
+- Analyse the Notebook and create formulate a functional name for the schema and a functional description. 
 - The functional name should be a human-readable English label for the schema (e.g. "Employee", "Workgroup"). 
 - The functional description should be a English explanation of what the schema contains and how it is derived; pseudo-code is allowed (e.g. MD5 hash van resource_id and meta_valid_from); also include how the schema is used in the overall data processing flow, and any default/fallback rows; NOTE the whole notebook is inscope for this description as context, not just the SQL query in this cell. 
 - Keep the description to the point, 
-- max 300 words, 
+- max 200 words, 
 - no excessive fuss.
 - After you have formulated the functional name and functional description, apply Unity Catalog documentation for `schema` of selected cell, by following the below [Rules](#rules).
 
